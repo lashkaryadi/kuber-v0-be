@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import process from "process";
 
 /**
  * 🔐 Protect routes (login required)

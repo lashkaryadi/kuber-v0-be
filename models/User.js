@@ -23,6 +23,14 @@ userSchema.methods.toJSON = function () {
   delete obj.password;
   return obj;
 };
+userSchema.set("toJSON", {
+  transform: (_, ret) => {
+    ret.id = ret._id.toString();
+    delete ret._id;
+    delete ret.__v;
+    delete ret.password;
+  },
+});
 
 const User = mongoose.model('User', userSchema);
 export default User;

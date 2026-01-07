@@ -8,6 +8,7 @@ import dashboardRoutes from "./routes/dashboard.js";
 import categoryRoutes from "./routes/categories.js";
 import inventoryRoutes from "./routes/inventory.js";
 import soldRoutes from "./routes/sold.js";
+import invoiceRoutes from "./routes/invoiceRoutes.js";
 import userRoutes from "./routes/user.js";
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
@@ -41,6 +42,8 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/sold", soldRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/invoices", invoiceRoutes);
+
 
 /**
  * ✅ Error handling
