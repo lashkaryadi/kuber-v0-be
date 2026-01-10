@@ -562,12 +562,12 @@ export const downloadImportReport = async (req, res) => {
 };
 
 /* =========================
-   GET SELLABLE INVENTORY (approved and pending items)
+   GET SELLABLE INVENTORY (in_stock and pending items)
 ========================= */
 export const getSellableInventory = async (req, res) => {
   try {
     const items = await Inventory.find({
-      status: { $in: ["approved", "pending"] },
+      status: { $in: ["in_stock", "pending"] },
       isDeleted: { $ne: true } // Exclude deleted items
     }).populate("category", "name").sort({ createdAt: -1 });
 

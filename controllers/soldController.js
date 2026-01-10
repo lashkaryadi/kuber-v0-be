@@ -157,12 +157,12 @@ export async function recordSale(req, res, next) {
       });
     }
 
-    const ALLOWED_TO_SELL = ["approved", "pending"];
+    const ALLOWED_TO_SELL = ["in_stock", "pending"];
 
     if (!ALLOWED_TO_SELL.includes(inventory.status)) {
       return res.status(400).json({
         success: false,
-        message: "Only approved or pending items can be sold",
+        message: "Only In Stock or pending items can be sold",
       });
     }
 
@@ -235,7 +235,7 @@ export async function undoSold(req, res, next) {
     // revert inventory - we'll set it back to "approved" as the default state for items that can be sold again
     // In a more sophisticated system, we might track the original status before selling
     await Inventory.findByIdAndUpdate(sold.inventoryItem, {
-      status: "approved",
+      status:"in_stock",
     });
 
     // delete invoice
