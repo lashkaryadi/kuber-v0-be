@@ -112,8 +112,13 @@ const inventorySchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "approved", "sold"],
+      enum: ["pending", "approved"],
       default: "pending",
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
     },
 
     description: String,
@@ -123,10 +128,6 @@ const inventorySchema = new mongoose.Schema(
 );
 
 inventorySchema.index({ isDeleted: 1 });
-
-inventorySchema.virtual('isDeleted').get(function() {
-  return this._isDeleted || false;
-});
 
 inventorySchema.set("toJSON", {
   transform: (_, ret) => {

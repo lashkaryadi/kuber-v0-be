@@ -35,35 +35,76 @@ import { generateExcel } from "../utils/excel.js";
 /* =========================
    GET ALL SOLD
 ========================= */
-export async function getAllSold(req, res, next) {
-  try {
-    const sold = await Sold.find()
+export const getSoldItems = async (req, res) => {
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+  const skip = (page - 1) * limit;
+
+  // Extract query parameters
+  const { search = "", sortBy = "createdAt", sortOrder = "desc" } = req.query;
+
+  // Build query object
+  const query = {};
+
+  // Apply search filter
+  if (search) {
+    const regex = new RegExp(search, "i");
+
+    // Search across related inventory fields by first finding matching inventory items
+    const inventoryMatches = await Inventory.find({
+      $or: [
+        { serialNumber: regex },
+        ...(isNaN(search) ? [] : [{ weight: Number(search) }, { pieces: Number(search) }])
+      ]
+    }).select('_id');
+
+    const inventoryIds = inventoryMatches.map(item => item._id);
+
+    // Then find sold items that match either the inventory IDs or other fields
+    query.$or = [
+      { buyer: regex },
+      ...(isNaN(search) ? [] : [{ price: Number(search) }]),
+      ...(inventoryIds.length > 0 ? [{ "inventoryItem": { $in: inventoryIds } }] : [])
+    ];
+  }
+
+  // Determine sort order
+  const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
+  const [items, total] = await Promise.all([
+    Sold.find(query)
       .populate({
         path: "inventoryItem",
         populate: { path: "category" },
       })
-      .sort({ createdAt: -1 });
+      .sort(sort)
+      .skip(skip)
+      .limit(limit),
+    Sold.countDocuments(query),
+  ]);
 
-    const safeSold = sold.filter((s) => s.inventoryItem !== null);
+  const safeSold = items.filter((s) => s.inventoryItem !== null);
 
-    const mapped = safeSold.map((s) => ({
-      id: s._id,
-      inventoryItem: s.inventoryItem,
-      price: s.price,
-      currency: s.currency,
-      buyer: s.buyer,
-      soldDate: s.soldDate,
-      createdAt: s.createdAt,
-    }));
+  const mapped = safeSold.map((s) => ({
+    id: s._id,
+    inventoryItem: s.inventoryItem,
+    price: s.price,
+    currency: s.currency,
+    buyer: s.buyer,
+    soldDate: s.soldDate,
+    createdAt: s.createdAt,
+  }));
 
-    res.json({
-      success: true,
-      data: mapped,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
+  res.json({
+    data: mapped,
+    meta: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
+};
 
 /* =========================
    GET SOLD BY ID
@@ -116,10 +157,10 @@ export async function recordSale(req, res, next) {
       });
     }
 
-    if (inventory.status !== "approved") {
+    if (inventory.status !== "approved" && inventory.status !== "pending") {
       return res.status(400).json({
         success: false,
-        message: "Only approved inventory items can be sold",
+        message: "Only pending or approved inventory items can be sold",
       });
     }
 
@@ -182,7 +223,8 @@ export async function undoSold(req, res, next) {
       });
     }
 
-    // revert inventory
+    // revert inventory - we'll set it back to "approved" as the default state for items that can be sold again
+    // In a more sophisticated system, we might track the original status before selling
     await Inventory.findByIdAndUpdate(sold.inventoryItem, {
       status: "approved",
     });

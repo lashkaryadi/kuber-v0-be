@@ -73,30 +73,31 @@ import { generateExcel } from "../utils/excel.js";
 
 /* GET */
 export const getCategories = async (req, res) => {
-  const { search = "", page = 1, limit = 20 } = req.query;
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+  const skip = (page - 1) * limit;
 
   const query = {};
 
-  if (search) {
-    query.name = new RegExp(search, "i");
+  // Add search filter if present
+  if (req.query.search) {
+    query.name = new RegExp(req.query.search, "i");
   }
 
-  const skip = (page - 1) * limit;
-
-  const [categories, total] = await Promise.all([
+  const [items, total] = await Promise.all([
     Category.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit)),
+      .limit(limit),
     Category.countDocuments(query),
   ]);
 
   res.json({
-    success: true,
-    data: categories,
-    pagination: {
+    data: items,
+    meta: {
+      page,
+      limit,
       total,
-      page: Number(page),
       pages: Math.ceil(total / limit),
     },
   });

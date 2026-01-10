@@ -11,7 +11,7 @@
 
 import express from "express";
 import {
-  getAllSold,
+  getSoldItems,
   getSoldById,
   recordSale,
   undoSold,
@@ -22,7 +22,7 @@ import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/", protect, getAllSold);
+router.get("/", protect, getSoldItems);
 router.get("/:id", protect, getSoldById);
 router.post("/", protect, recordSale);
 router.delete("/:id/undo", protect, undoSold);

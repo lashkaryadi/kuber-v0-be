@@ -315,17 +315,29 @@ export const getInventory = async (req, res) => {
     sortOrder = "desc",
   } = req.query;
 
-  const query = {};
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+  const skip = (page - 1) * limit;
+
+  // Base query to include non-deleted items
+  const baseConditions = [
+    { isDeleted: false },
+    { isDeleted: { $exists: false } }
+  ];
 
   // Filters
-  if (category) query.category = category;
-  if (status) query.status = status;
+  if (category) {
+    baseConditions.push({ category: category });
+  }
+  if (status) {
+    baseConditions.push({ status: status });
+  }
 
   // 🔍 SEARCH (multi-field)
   if (search) {
     const regex = new RegExp(search, "i");
 
-    query.$or = [
+    const searchConditions = [
       { serialNumber: regex },
       { purchaseCode: regex },
       { saleCode: regex },
@@ -335,20 +347,44 @@ export const getInventory = async (req, res) => {
 
     // numeric search support
     if (!isNaN(search)) {
-      query.$or.push(
+      searchConditions.push(
         { weight: Number(search) },
         { pieces: Number(search) }
       );
     }
+
+    // Combine base conditions with search conditions using $and
+    var query = {
+      $and: [
+        { $or: baseConditions },
+        { $or: searchConditions }
+      ]
+    };
+  } else {
+    // Just use base conditions if no search
+    var query = { $or: baseConditions };
   }
 
   const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
 
-  const items = await Inventory.find(query)
-    .populate("category", "name")
-    .sort(sort);
+  const [items, total] = await Promise.all([
+    Inventory.find(query)
+      .populate("category", "name")
+      .sort(sort)
+      .skip(skip)
+      .limit(limit),
+    Inventory.countDocuments(query),
+  ]);
 
-  res.json({ items });
+  res.json({
+    data: items,
+    meta: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
 };
 
 /* CREATE */
