@@ -10,7 +10,7 @@ export const getAuditLogs = async (req, res) => {
       inventoryId,
     } = req.query;
 
-    const query = {};
+    const query = { ownerId: req.user.ownerId };
 
     if (action) {
       query.action = action;
@@ -49,7 +49,7 @@ export const getAuditLogs = async (req, res) => {
 };
 
 export const exportAuditLogs = async (req, res) => {
-  const logs = await AuditLog.find()
+  const logs = await AuditLog.find({ ownerId: req.user.ownerId })
     .populate("performedBy", "username email")
     .sort({ createdAt: -1 });
 

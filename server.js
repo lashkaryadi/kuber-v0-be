@@ -1,6 +1,9 @@
-import express from "express";
+
 import dotenv from "dotenv";
+dotenv.config();
+import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import process from "process";
@@ -13,7 +16,7 @@ import userRoutes from "./routes/user.js";
 import auditLogRoutes from "./routes/auditLogs.js";
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
-dotenv.config();
+
 connectDB();
 
 const app = express();
@@ -32,6 +35,7 @@ app.use(
  * ✅ Body parsers
  */
 app.use(express.json());
+app.use(cookieParser()); // ✅ REQUIRED
 app.use(express.urlencoded({ extended: true }));
 
 /**

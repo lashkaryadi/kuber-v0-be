@@ -122,6 +122,13 @@ const inventorySchema = new mongoose.Schema(
       default: false,
     },
 
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
     description: String,
     images: [String],
   },

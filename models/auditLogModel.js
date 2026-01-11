@@ -36,6 +36,12 @@ const auditLogSchema = new mongoose.Schema(
 
     ipAddress: String,
     userAgent: String,
+
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
   },
   { timestamps: true }
 );

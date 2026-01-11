@@ -6,6 +6,25 @@ const userSchema = new mongoose.Schema({
   email:    { type: String, required: true, unique: true },
   password: { type: String, required: true, select: false },
   role: { type: String, enum: ['admin', 'staff', "viewer"], default: 'staff' },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  refreshToken: {
+    type: String,
+    default: null,
+  },
+  isEmailVerified: {
+    type: Boolean,
+    default: false,
+  },
+  emailOtp: {
+    type: String,
+  },
+  emailOtpExpiresAt: {
+    type: Date,
+  },
 }, { timestamps: true });
 
 userSchema.pre('save', async function (next) {
@@ -15,7 +34,12 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
+  // 🛑 HARD SAFETY
+  if (!this.password || !enteredPassword) {
+    return false;
+  }
+
+  return await bcrypt.compare(enteredPassword, this.password);
 };
 
 userSchema.methods.toJSON = function () {

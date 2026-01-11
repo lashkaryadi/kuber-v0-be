@@ -45,7 +45,7 @@ export const getSoldItems = async (req, res) => {
   const { search = "", sortBy = "createdAt", sortOrder = "desc" } = req.query;
 
   // Build query object
-  const query = {};
+  const query = { ownerId: req.user.ownerId };
 
   // Apply search filter
   if (search) {
@@ -56,7 +56,8 @@ export const getSoldItems = async (req, res) => {
       $or: [
         { serialNumber: regex },
         ...(isNaN(search) ? [] : [{ weight: Number(search) }, { pieces: Number(search) }])
-      ]
+      ],
+      ownerId: req.user.ownerId
     }).select('_id');
 
     const inventoryIds = inventoryMatches.map(item => item._id);
@@ -112,7 +113,10 @@ export const getSoldItems = async (req, res) => {
 ========================= */
 export async function getSoldById(req, res, next) {
   try {
-    const record = await Sold.findById(req.params.id).populate({
+    const record = await Sold.findOne({
+      _id: req.params.id,
+      ownerId: req.user.ownerId
+    }).populate({
       path: "inventoryItem",
       populate: { path: "category" },
     });
@@ -142,7 +146,10 @@ export async function recordSale(req, res, next) {
       });
     }
 
-    const inventory = await Inventory.findById(inventoryId);
+    const inventory = await Inventory.findOne({
+      _id: inventoryId,
+      ownerId: req.user.ownerId,
+    });
 
     if (!inventory) {
       return res.status(404).json({
@@ -196,6 +203,7 @@ export async function recordSale(req, res, next) {
       currency,
       soldDate,
       buyer,
+      ownerId: req.user.ownerId,
     });
 
     /* ---------- CREATE INVOICE ---------- */
@@ -212,7 +220,7 @@ export async function recordSale(req, res, next) {
       action: "SELL_ITEM",
       entityType: "inventory",
       entityId: inventory._id,
-      performedBy: req.user._id,
+      performedBy: req.user.id,
       meta: {
         serialNumber: inventory.serialNumber,
         salePrice: price,
@@ -222,6 +230,7 @@ export async function recordSale(req, res, next) {
       },
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
+      ownerId: req.user.ownerId,
     });
 
     /* ---------- RESPONSE ---------- */
@@ -242,7 +251,10 @@ export async function undoSold(req, res, next) {
   try {
     const { id } = req.params;
 
-    const sold = await Sold.findById(id);
+    const sold = await Sold.findOne({
+      _id: id,
+      ownerId: req.user.ownerId
+    });
     if (!sold) {
       return res.status(404).json({
         success: false,
@@ -267,12 +279,13 @@ export async function undoSold(req, res, next) {
       action: "UNDO_SOLD",
       entityType: "sold",
       entityId: sold._id,
-      performedBy: req.user._id,
+      performedBy: req.user.id,
       meta: {
         serialNumber: sold.inventoryItem?.serialNumber,
       },
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
+      ownerId: req.user.ownerId,
     });
 
     res.json({ success: true });
@@ -325,7 +338,7 @@ export async function undoSold(req, res, next) {
 
 export const exportSoldItemsToExcel = async (req, res) => {
   try {
-    const soldItems = await Sold.find()
+    const soldItems = await Sold.find({ ownerId: req.user.ownerId })
       .populate({
         path: "inventoryItem",
         populate: { path: "category" },
@@ -372,7 +385,10 @@ export async function updateSold(req, res, next) {
     const { id } = req.params;
     const { price, soldDate, buyer } = req.body;
 
-    const sold = await Sold.findById(id);
+    const sold = await Sold.findOne({
+      _id: id,
+      ownerId: req.user.ownerId
+    });
     if (!sold) {
       return res.status(404).json({ message: "Sold item not found" });
     }
@@ -398,13 +414,14 @@ export async function updateSold(req, res, next) {
       action: "UPDATE_SOLD",
       entityType: "sold",
       entityId: sold._id,
-      performedBy: req.user._id,
+      performedBy: req.user.id,
       meta: {
         before,
         after: sold.toObject(),
       },
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
+      ownerId: req.user.ownerId,
     });
 
     res.json({

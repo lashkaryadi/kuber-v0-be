@@ -77,7 +77,7 @@ export const getCategories = async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 10, 100);
   const skip = (page - 1) * limit;
 
-  const query = {};
+  const query = { ownerId: req.user.ownerId };
 
   // Add search filter if present
   if (req.query.search) {
@@ -107,7 +107,10 @@ export const getCategories = async (req, res) => {
 export const createCategory = async (req, res) => {
   const { name, description } = req.body;
 
-  const exists = await Category.findOne({ name });
+  const ownerId =
+    req.user.role === "admin" ? req.user.id : req.user.ownerId;
+
+  const exists = await Category.findOne({ name, ownerId });
   if (exists) {
     return res.status(409).json({ message: "Category already exists" });
   }
@@ -116,6 +119,7 @@ export const createCategory = async (req, res) => {
     name,
     description,
     createdBy: req.user.id,
+    ownerId,
   });
 
   res.status(201).json(category);
@@ -125,7 +129,10 @@ export const createCategory = async (req, res) => {
 export const updateCategory = async (req, res) => {
   const { name, description } = req.body;
 
-  const category = await Category.findById(req.params.id);
+  const category = await Category.findOne({
+    _id: req.params.id,
+    ownerId: req.user.ownerId
+  });
   if (!category) {
     return res.status(404).json({ message: "Category not found" });
   }
@@ -143,6 +150,17 @@ export const updateCategory = async (req, res) => {
 //   res.json({ success: true });
 // };
 export const deleteCategory = async (req, res) => {
+  const category = await Category.findOne({
+    _id: req.params.id,
+    ownerId: req.user.ownerId
+  });
+
+  if (!category) {
+    return res.status(404).json({
+      message: "Category not found",
+    });
+  }
+
   const used = await Inventory.exists({ category: req.params.id });
 
   if (used) {
@@ -158,7 +176,7 @@ export const deleteCategory = async (req, res) => {
 /* EXPORT CATEGORIES TO EXCEL */
 export const exportCategoriesToExcel = async (req, res) => {
   try {
-    const categories = await Category.find();
+    const categories = await Category.find({ ownerId: req.user.ownerId });
 
     const data = categories.map((c) => ({
       Name: c.name,

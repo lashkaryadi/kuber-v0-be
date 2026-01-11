@@ -13,10 +13,10 @@ export const getDashboardStats = async (req, res) => {
       soldItems,
       pendingApproval,
     ] = await Promise.all([
-      Inventory.countDocuments(),
-      Inventory.countDocuments({ status: "in_stock" }),
-      Sold.countDocuments(),
-      Inventory.countDocuments({ status: "pending" }),
+      Inventory.countDocuments({ ownerId: req.user.ownerId }),
+      Inventory.countDocuments({ status: "in_stock", ownerId: req.user.ownerId }),
+      Sold.countDocuments({ ownerId: req.user.ownerId }),
+      Inventory.countDocuments({ status: "pending", ownerId: req.user.ownerId }),
     ]);
 
     /* ---------------- TOTAL VALUE (ADMIN ONLY) ---------------- */
@@ -25,7 +25,7 @@ export const getDashboardStats = async (req, res) => {
 
     if (req.user && req.user.role === "admin") {
       const in_stockInventory = await Inventory.find(
-        { status: "in_stock" },
+        { status: "in_stock", ownerId: req.user.ownerId },
         { price: 1 }
       );
 
@@ -35,7 +35,7 @@ export const getDashboardStats = async (req, res) => {
       );
 
       /* ---------------- IN-STOCK VALUE CALCULATION (ADMIN ONLY) ---------------- */
-      const inStockInventory = await Inventory.find({ status: "in_stock" });
+      const inStockInventory = await Inventory.find({ status: "in_stock", ownerId: req.user.ownerId });
 
       let inStockValue = 0;
       let valid = true;
@@ -55,7 +55,7 @@ export const getDashboardStats = async (req, res) => {
     }
 
     /* ---------------- RECENT SALES ---------------- */
-    const recentSales = await Sold.find()
+    const recentSales = await Sold.find({ ownerId: req.user.ownerId })
   .sort({ createdAt: -1 })
   .limit(5)
   .populate({

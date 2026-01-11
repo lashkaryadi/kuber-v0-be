@@ -27,13 +27,25 @@ if (!authHeader || !authHeader.startsWith("Bearer ")) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
-    req.user = await User.findById(decoded.id).select("-password");
+    const dbUser = await User.findById(decoded.id).select("-password");
 
-    if (!req.user) {
+    if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
+
+    // 🔥 NORMALIZE ownerId
+    const resolvedOwnerId =
+      dbUser.role === "admin" ? dbUser._id : dbUser.ownerId;
+
+    req.user = {
+      id: dbUser._id,
+      role: dbUser.role,
+      ownerId: resolvedOwnerId,
+      email: dbUser.email,
+      username: dbUser.username,
+    };
 
     next();
   } catch (error) {

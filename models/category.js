@@ -5,7 +5,6 @@ const categorySchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     description: {
@@ -17,10 +16,17 @@ const categorySchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
   },
   { timestamps: true }
 );
 
+// 🔥 COMPOUND INDEX (MULTI-TENANT SAFE)
+categorySchema.index({ name: 1, ownerId: 1 }, { unique: true });
 
 categorySchema.set("toJSON", {
   transform: (_, ret) => {

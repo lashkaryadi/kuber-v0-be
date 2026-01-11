@@ -52,27 +52,31 @@ import { generateExcel } from "../utils/excel.js";
 export const getUsers = async (req, res) => {
   const { search = "" } = req.query;
 
-  const query = {};
+  const query = {
+    $or: [
+      { _id: req.user.ownerId },      // admin himself
+      { ownerId: req.user.ownerId },  // staff
+    ],
+  };
 
   if (search) {
-    query.$or = [
-      { username: new RegExp(search, "i") },
-      { email: new RegExp(search, "i") },
-    ];
+    query.$and = [{
+      $or: [
+        { username: new RegExp(search, "i") },
+        { email: new RegExp(search, "i") },
+      ],
+    }];
   }
 
   const users = await User.find(query).select("-password");
 
-  res.json({
-    success: true,
-    data: users,
-  });
+  res.json({ success: true, data: users });
 };
 
 /* EXPORT USERS TO EXCEL */
 export const exportUsersToExcel = async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const users = await User.find({ ownerId: req.user.ownerId }).select("-password");
 
     const data = users.map(u => ({
       Username: u.username,
@@ -120,15 +124,43 @@ export const exportUsersToExcel = async (req, res) => {
 //   });
 // };
 export const createUser = async (req, res) => {
-  const { username, email, password, role } = req.body;
+  const { username, email, password } = req.body;
+
+  // ❌ Block admin creation explicitly
+  if (req.body.role === "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admins cannot create another admin",
+    });
+  }
 
   const exists = await User.findOne({ email });
   if (exists) {
-    return res.status(409).json({ message: "User already exists" });
+    return res.status(409).json({
+      success: false,
+      message: "User already exists",
+    });
   }
 
-  const user = await User.create({ username, email, password, role });
-  res.status(201).json(user);
+  const user = await User.create({
+    username,
+    email,
+    password,
+    role: "staff",                 // ✅ FORCE STAFF
+    isEmailVerified: true,          // ✅ auto-verified
+    ownerId: req.user.ownerId,      // ✅ same tenant
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+    },
+  });
 };
 
 
@@ -162,7 +194,17 @@ export const createUser = async (req, res) => {
 // };
 
 export const updateUser = async (req, res) => {
-  const user = await User.findById(req.params.id);
+  // Prevent admin promotion
+  if (req.body.role === "admin") {
+    return res.status(403).json({
+      message: "Cannot promote user to admin",
+    });
+  }
+
+  const user = await User.findOne({
+    _id: req.params.id,
+    ownerId: req.user.ownerId
+  });
   if (!user) return res.status(404).json({ message: "User not found" });
 
   if (req.body.password) {
@@ -179,7 +221,10 @@ export const updateUser = async (req, res) => {
 
 
 export const deleteUser = async (req, res) => {
-  const userToDelete = await User.findById(req.params.id);
+  const userToDelete = await User.findOne({
+    _id: req.params.id,
+    ownerId: req.user.ownerId
+  });
 
   if (!userToDelete) {
     return res.status(404).json({ message: "User not found" });

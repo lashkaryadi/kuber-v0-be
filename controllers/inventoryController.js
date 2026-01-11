@@ -58,7 +58,7 @@ import multer from "multer";
 import Inventory from "../models/inventoryModel.js";
 import { generateValidationReport } from "../utils/excel.js";
 import { parseExcel, generateExcel } from "../utils/excel.js";
-import Category from "../models/category.js";
+import Category from "../models/Category.js";
 import mongoose from "mongoose";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -177,6 +177,7 @@ export const importInventoryFromExcel = async (req, res) => {
   purchaseCode: row.purchaseCode,
   saleCode: row.saleCode,
   status: row.status || "pending",
+  ownerId: req.user.ownerId, // 🔥 REQUIRED
 
   dimensions: {
     length: row.length,
@@ -251,6 +252,7 @@ export const confirmInventoryImport = async (req, res) => {
   purchaseCode: row.purchaseCode,
   saleCode: row.saleCode,
   status: row.status || "pending",
+  ownerId: req.user.ownerId, // 🔥 REQUIRED
 
   dimensions: {
     length: row.length,
@@ -324,7 +326,10 @@ const sortDir = sortOrder === "asc" ? 1 : -1;
 
 const sortQuery = { [sortField]: sortDir };
 
-    const query = { isDeleted: false };
+    const query = {
+      ownerId: req.user.ownerId,
+      isDeleted: false,
+    };
 
     /* 🔍 SEARCH */
     if (search) {
@@ -415,6 +420,8 @@ export const createInventoryItem = async (req, res, next) => {
       });
     }
 
+    const ownerId = req.user.ownerId;
+
     const item = await Inventory.create({
       serialNumber,
       category,
@@ -429,6 +436,7 @@ export const createInventoryItem = async (req, res, next) => {
       status,
       description,
       images,
+      ownerId, // ✅ FIX
     });
 
     res.status(201).json({
@@ -467,8 +475,11 @@ export const updateInventoryItem = async (req, res) => {
   try {
     const { id } = req.params;
 
-   const updated = await Inventory.findByIdAndUpdate(
-  id,
+   const updated = await Inventory.findOneAndUpdate(
+  {
+    _id: id,
+    ownerId: req.user.ownerId
+  },
   {
     ...req.body,
     dimensions: req.body.dimensions, // 🔥 FORCE SAVE
@@ -515,7 +526,10 @@ export async function deleteInventoryItem(req, res, next) {
   try {
     const { id } = req.params;
 
-    const inventory = await Inventory.findById(id);
+    const inventory = await Inventory.findOne({
+      _id: id,
+      ownerId: req.user.ownerId
+    });
     if (!inventory) {
       return res.status(404).json({
         success: false,
@@ -568,7 +582,8 @@ export const getSellableInventory = async (req, res) => {
   try {
     const items = await Inventory.find({
       status: { $in: ["in_stock", "pending"] },
-      isDeleted: { $ne: true } // Exclude deleted items
+      isDeleted: { $ne: true }, // Exclude deleted items
+      ownerId: req.user.ownerId
     }).populate("category", "name").sort({ createdAt: -1 });
 
     res.json({

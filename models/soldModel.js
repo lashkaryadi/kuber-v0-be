@@ -50,6 +50,12 @@ const soldSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
   },
   {
     timestamps: true, // createdAt, updatedAt
