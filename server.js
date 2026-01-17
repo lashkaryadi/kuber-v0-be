@@ -19,6 +19,7 @@ import companyUploadRoutes from "./routes/uploadRoutes.js";
 import inventoryUploadRoutes from "./routes/inventoryUploadRoutes.js";
 import companyRoutes from "./routes/companyRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
+import recycleBinRoutes from "./routes/recycleBinRoutes.js"; // ✅ NEW
 import path from "path";
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
@@ -57,6 +58,7 @@ app.use("/api/invoices", invoice);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/company", companyRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/recycle-bin", recycleBinRoutes); // ✅ NEW
 
 // 👇 STATIC FILES
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));

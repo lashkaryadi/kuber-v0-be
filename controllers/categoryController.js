@@ -69,38 +69,58 @@
 // };
 import Inventory from "../models/inventoryModel.js";
 import Category from "../models/Category.js";
+import RecycleBin from "../models/recycleBinModel.js";
 import { generateExcel } from "../utils/excel.js";
 
-/* GET */
+/* =========================
+   GET ALL CATEGORIES (EXCLUDE DELETED)
+========================= */
 export const getCategories = async (req, res) => {
-  const page = Math.max(parseInt(req.query.page) || 1, 1);
-  const limit = Math.min(parseInt(req.query.limit) || 10, 100);
-  const skip = (page - 1) * limit;
+  try {
+    const {
+      search = "",
+      page = 1,
+      limit = 20,
+    } = req.query;
 
-  const query = { ownerId: req.user.ownerId };
+    const query = {
+      ownerId: req.user.ownerId,
+      isDeleted: false, // ✅ EXCLUDE DELETED
+    };
 
-  // Add search filter if present
-  if (req.query.search) {
-    query.name = new RegExp(req.query.search, "i");
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [categories, total] = await Promise.all([
+      Category.find(query)
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Category.countDocuments(query),
+    ]);
+
+    res.json({
+      success: true,
+      data: categories,
+      meta: {
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("Get categories error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch categories",
+    });
   }
-
-  const [items, total] = await Promise.all([
-    Category.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Category.countDocuments(query),
-  ]);
-
-  res.json({
-    data: items,
-    meta: {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-    },
-  });
 };
 
 /* CREATE */
@@ -173,33 +193,66 @@ export const updateCategory = async (req, res) => {
   res.json(category);
 };
 
-/* DELETE */
-// export const deleteCategory = async (req, res) => {
-//   await Category.findByIdAndDelete(req.params.id);
-//   res.json({ success: true });
-// };
+/* =========================
+   SOFT DELETE CATEGORY
+========================= */
 export const deleteCategory = async (req, res) => {
-  const category = await Category.findOne({
-    _id: req.params.id,
-    ownerId: req.user.ownerId
-  });
+  try {
+    const { id } = req.params;
 
-  if (!category) {
-    return res.status(404).json({
-      message: "Category not found",
+    const category = await Category.findOne({
+      _id: id,
+      ownerId: req.user.ownerId,
+      isDeleted: false,
+    });
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+    }
+
+    // Check if category is used in inventory
+    const used = await Inventory.exists({
+      category: id,
+      isDeleted: false // Only check non-deleted inventory items
+    });
+
+    if (used) {
+      return res.status(400).json({
+        success: false,
+        message: "Category is used in inventory and cannot be deleted",
+      });
+    }
+
+    // ✅ MOVE TO RECYCLE BIN
+    await RecycleBin.create({
+      entityType: "category",
+      entityId: category._id,
+      entityData: category.toObject(),
+      deletedBy: req.user.id,
+      ownerId: req.user.ownerId,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    });
+
+    // ✅ SOFT DELETE
+    category.isDeleted = true;
+    category.deletedAt = new Date();
+    category.deletedBy = req.user.id;
+    await category.save();
+
+    res.json({
+      success: true,
+      message: "Category moved to recycle bin",
+    });
+  } catch (err) {
+    console.error("Delete category error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete category",
     });
   }
-
-  const used = await Inventory.exists({ category: req.params.id });
-
-  if (used) {
-    return res.status(400).json({
-      message: "Category is used in inventory and cannot be deleted",
-    });
-  }
-
-  await Category.findByIdAndDelete(req.params.id);
-  res.json({ success: true });
 };
 
 /* EXPORT CATEGORIES TO EXCEL */

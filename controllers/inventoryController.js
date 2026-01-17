@@ -56,6 +56,7 @@ import Sold from "../models/soldModel.js";
 import Invoice from "../models/Invoice.js";
 import multer from "multer";
 import Inventory from "../models/inventoryModel.js";
+import RecycleBin from "../models/recycleBinModel.js";
 import { generateValidationReport } from "../utils/excel.js";
 import { parseExcel, generateExcel } from "../utils/excel.js";
 import Category from "../models/Category.js";
@@ -132,71 +133,67 @@ export const importInventoryFromExcel = async (req, res) => {
     let skipped = 0;
     const report = [];
 
-   for (const row of rows) {
-  // BASIC VALIDATION
-  if (
-    !row.serialNumber ||
-    !row.category ||
-    !row.pieces ||
-    !row.weight ||
-    !row.purchaseCode ||
-    !row.saleCode
-  ) {
-    skipped++;
-    report.push({ ...row, status: "INVALID" });
-    continue;
-  }
+    for (const row of rows) {
+      if (
+        !row.serialNumber ||
+        !row.category ||
+        !row.pieces ||
+        !row.weight ||
+        !row.purchaseCode ||
+        !row.saleCode
+      ) {
+        skipped++;
+        report.push({ ...row, status: "INVALID" });
+        continue;
+      }
 
-  // CATEGORY NAME → ID
-  const categoryDoc = await Category.findOne({
-    name: new RegExp(`^${row.category}$`, "i"),
-  });
+      const categoryDoc = await Category.findOne({
+        name: new RegExp(`^${row.category}$`, "i"),
+        isDeleted: false,
+      });
 
-  if (!categoryDoc) {
-    skipped++;
-    report.push({ ...row, status: "INVALID", reason: "Category not found" });
-    continue;
-  }
+      if (!categoryDoc) {
+        skipped++;
+        report.push({ ...row, status: "INVALID", reason: "Category not found" });
+        continue;
+      }
 
-  // DUPLICATE CHECK
-  const exists = await Inventory.findOne({
-    serialNumber: row.serialNumber,
-    ownerId: req.user.ownerId,
-  });
+      const exists = await Inventory.findOne({
+        serialNumber: row.serialNumber,
+        ownerId: req.user.ownerId,
+        isDeleted: false,
+      });
 
-  if (exists) {
-    skipped++;
-    report.push({ ...row, status: "DUPLICATE" });
-    continue;
-  }
+      if (exists) {
+        skipped++;
+        report.push({ ...row, status: "DUPLICATE" });
+        continue;
+      }
 
-  // INSERT
-  await Inventory.create({
-  serialNumber: row.serialNumber,
-  category: categoryDoc._id,
-  totalPieces: row.pieces,
-  availablePieces: row.pieces, // Initially available = total
-  totalWeight: row.weight,
-  availableWeight: row.weight, // Initially available = total
-  weightUnit: row.weightUnit || "carat",
-  purchaseCode: row.purchaseCode,
-  saleCode: row.saleCode,
-  status: row.status || "pending",
-  ownerId: req.user.ownerId, // 🔥 REQUIRED
+      await Inventory.create({
+        serialNumber: row.serialNumber,
+        category: categoryDoc._id,
+        shapes: [{ name: "Default", pieces: row.pieces, weight: row.weight }],
+        totalPieces: row.pieces,
+        availablePieces: row.pieces,
+        totalWeight: row.weight,
+        availableWeight: row.weight,
+        weightUnit: row.weightUnit || "carat",
+        purchaseCode: row.purchaseCode,
+        saleCode: row.saleCode,
+        status: row.status || "pending",
+        ownerId: req.user.ownerId,
+        dimensions: {
+          length: row.length,
+          width: row.width,
+          height: row.height,
+          unit: row.dimensionUnit || "mm",
+        },
+      });
 
-  dimensions: {
-    length: row.length,
-    width: row.width,
-    height: row.height,
-    unit: row.dimensionUnit || "mm",
-  },
-});
-
-
-  inserted++;
-  report.push({ ...row, status: "INSERTED" });
-}
-
+      inserted++;
+      report.push({ ...row, status: "INSERTED" });
+    }
 
     res.json({
       success: true,
@@ -221,59 +218,55 @@ export const confirmInventoryImport = async (req, res) => {
     let skipped = 0;
     const report = [];
 
-   for (const row of rows) {
-  // BASIC VALIDATION (same as above)
-  if (
-    !row.serialNumber ||
-    !row.category ||
-    !row.pieces ||
-    !row.weight ||
-    !row.purchaseCode ||
-    !row.saleCode
-  ) {
-    skipped++;
-    report.push({ ...row, status: "INVALID" });
-    continue;
-  }
+    for (const row of rows) {
+      if (
+        !row.serialNumber ||
+        !row.category ||
+        !row.pieces ||
+        !row.weight ||
+        !row.purchaseCode ||
+        !row.saleCode
+      ) {
+        skipped++;
+        report.push({ ...row, status: "INVALID" });
+        continue;
+      }
 
-  // CATEGORY NAME → ID
-  const categoryDoc = await Category.findOne({
-    name: new RegExp(`^${row.category}$`, "i"),
-  });
+      const categoryDoc = await Category.findOne({
+        name: new RegExp(`^${row.category}$`, "i"),
+        isDeleted: false,
+      });
 
-  if (!categoryDoc) {
-    skipped++;
-    report.push({ ...row, status: "INVALID", reason: "Category not found" });
-    continue;
-  }
+      if (!categoryDoc) {
+        skipped++;
+        report.push({ ...row, status: "INVALID", reason: "Category not found" });
+        continue;
+      }
 
-  // INSERT (SKIP DUPLICATE CHECK - USER HAS REVIEWED PREVIEW)
-  await Inventory.create({
-  serialNumber: row.serialNumber,
-  category: categoryDoc._id,
-  totalPieces: row.pieces,
-  availablePieces: row.pieces, // Initially available = total
-  totalWeight: row.weight,
-  availableWeight: row.weight, // Initially available = total
-  weightUnit: row.weightUnit || "carat",
-  purchaseCode: row.purchaseCode,
-  saleCode: row.saleCode,
-  status: row.status || "pending",
-  ownerId: req.user.ownerId, // 🔥 REQUIRED
+      await Inventory.create({
+        serialNumber: row.serialNumber,
+        category: categoryDoc._id,
+        shapes: [{ name: "Default", pieces: row.pieces, weight: row.weight }],
+        totalPieces: row.pieces,
+        availablePieces: row.pieces,
+        totalWeight: row.weight,
+        availableWeight: row.weight,
+        weightUnit: row.weightUnit || "carat",
+        purchaseCode: row.purchaseCode,
+        saleCode: row.saleCode,
+        status: row.status || "pending",
+        ownerId: req.user.ownerId,
+        dimensions: {
+          length: row.length,
+          width: row.width,
+          height: row.height,
+          unit: row.dimensionUnit || "mm",
+        },
+      });
 
-  dimensions: {
-    length: row.length,
-    width: row.width,
-    height: row.height,
-    unit: row.dimensionUnit || "mm",
-  },
-});
-
-
-  inserted++;
-  report.push({ ...row, status: "INSERTED" });
-}
-
+      inserted++;
+      report.push({ ...row, status: "INSERTED" });
+    }
 
     res.json({
       success: true,
@@ -291,13 +284,16 @@ export const confirmInventoryImport = async (req, res) => {
 
 
 export const exportInventoryToExcel = async (req, res) => {
-  const inventory = await Inventory.find().populate("category");
+  const inventory = await Inventory.find({
+    isDeleted: false,
+    ownerId: req.user.ownerId,
+  }).populate("category");
 
   const data = inventory.map((i) => ({
     serialNumber: i.serialNumber,
     category: i.category?.name,
-    pieces: i.pieces,
-    weight: i.weight,
+    pieces: i.totalPieces,
+    weight: i.totalWeight,
     weightUnit: i.weightUnit,
     purchaseCode: i.purchaseCode,
     saleCode: i.saleCode,
@@ -397,12 +393,15 @@ if (category && mongoose.Types.ObjectId.isValid(category)) {
 };
 
 
-/* CREATE */
+/* =========================
+   CREATE INVENTORY ITEM (WITH SHAPES)
+========================= */
 export const createInventoryItem = async (req, res, next) => {
   try {
     const {
       serialNumber,
       category,
+      shapes, // NEW: Array of { name, pieces, weight }
       pieces,
       weight,
       totalPieces,
@@ -418,19 +417,29 @@ export const createInventoryItem = async (req, res, next) => {
       images,
     } = req.body;
 
-    // ✅ Normalize payload (frontend safety)
-    const finalPieces = Number(pieces ?? totalPieces);
-    const finalWeight = Number(weight ?? totalWeight);
+    // ✅ HANDLE SHAPES OR FALLBACK TO SINGLE ENTRY
+    let finalShapes;
 
-    if (
-      !serialNumber ||
-      !category ||
-      !finalPieces ||
-      !finalWeight ||
-      !weightUnit ||
-      !purchaseCode ||
-      !saleCode
-    ) {
+    if (shapes && Array.isArray(shapes) && shapes.length > 0) {
+      // User provided shapes array
+      finalShapes = shapes;
+    } else {
+      // Backward compatibility: create single shape from pieces/weight
+      const finalPieces = Number(pieces ?? totalPieces);
+      const finalWeight = Number(weight ?? totalWeight);
+
+      finalShapes = [{
+        name: "Default",
+        pieces: finalPieces,
+        weight: finalWeight,
+      }];
+    }
+
+    // ✅ CALCULATE TOTALS FROM SHAPES
+    const calculatedTotalPieces = finalShapes.reduce((sum, s) => sum + Number(s.pieces), 0);
+    const calculatedTotalWeight = finalShapes.reduce((sum, s) => sum + Number(s.weight), 0);
+
+    if (!serialNumber || !category || !weightUnit || !purchaseCode || !saleCode) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -442,10 +451,11 @@ export const createInventoryItem = async (req, res, next) => {
     const item = await Inventory.create({
       serialNumber,
       category,
-      totalPieces: finalPieces,
-      availablePieces: finalPieces,
-      totalWeight: finalWeight,
-      availableWeight: finalWeight,
+      shapes: finalShapes,
+      totalPieces: calculatedTotalPieces,
+      availablePieces: calculatedTotalPieces,
+      totalWeight: calculatedTotalWeight,
+      availableWeight: calculatedTotalWeight,
       weightUnit,
       purchaseCode,
       saleCode,
@@ -476,63 +486,60 @@ export const createInventoryItem = async (req, res, next) => {
 };
 
 
-/* UPDATE */
-// export const updateInventoryItem = async (req, res) => {
-//   const item = await Inventory.findByIdAndUpdate(
-//     req.params.id,
-//     req.body,
-//     { new: true }
-//   );
-
-//   if (!item) {
-//     return res.status(404).json({ message: "Item not found" });
-//   }
-
-//   res.json(item);
-// };
+/* =========================
+   UPDATE INVENTORY ITEM (WITH SHAPES)
+========================= */
 export const updateInventoryItem = async (req, res) => {
   try {
     const { id } = req.params;
+    const updateData = { ...req.body };
 
-   // Handle the new schema fields properly
-   const updateData = { ...req.body };
+    // ✅ RECALCULATE TOTALS IF SHAPES CHANGED
+    if (updateData.shapes && Array.isArray(updateData.shapes)) {
+      updateData.totalPieces = updateData.shapes.reduce((sum, s) => sum + Number(s.pieces), 0);
+      updateData.totalWeight = updateData.shapes.reduce((sum, s) => sum + Number(s.weight), 0);
 
-   // If pieces or weight are being updated, update total and available accordingly
-   if (updateData.pieces !== undefined) {
-     updateData.totalPieces = updateData.pieces;
-     // Only update availablePieces if it's not already set separately
-     if (updateData.availablePieces === undefined) {
-       updateData.availablePieces = updateData.pieces;
-     }
-     // Remove the old field to avoid conflicts
-     delete updateData.pieces;
-   }
+      // Preserve available quantities if not explicitly set
+      if (updateData.availablePieces === undefined) {
+        updateData.availablePieces = updateData.totalPieces;
+      }
+      if (updateData.availableWeight === undefined) {
+        updateData.availableWeight = updateData.totalWeight;
+      }
+    }
 
-   if (updateData.weight !== undefined) {
-     updateData.totalWeight = updateData.weight;
-     // Only update availableWeight if it's not already set separately
-     if (updateData.availableWeight === undefined) {
-       updateData.availableWeight = updateData.weight;
-     }
-     // Remove the old field to avoid conflicts
-     delete updateData.weight;
-   }
+    // Handle old field names (backward compatibility)
+    if (updateData.pieces !== undefined && !updateData.shapes) {
+      updateData.totalPieces = updateData.pieces;
+      if (updateData.availablePieces === undefined) {
+        updateData.availablePieces = updateData.pieces;
+      }
+      delete updateData.pieces;
+    }
 
-   const updated = await Inventory.findOneAndUpdate(
-  {
-    _id: id,
-    ownerId: req.user.ownerId
-  },
-  {
-    ...updateData,
-    dimensions: updateData.dimensions, // 🔥 FORCE SAVE
-  },
-  {
-    new: true,
-    runValidators: true,
-  }
-);
+    if (updateData.weight !== undefined && !updateData.shapes) {
+      updateData.totalWeight = updateData.weight;
+      if (updateData.availableWeight === undefined) {
+        updateData.availableWeight = updateData.weight;
+      }
+      delete updateData.weight;
+    }
 
+    const updated = await Inventory.findOneAndUpdate(
+      {
+        _id: id,
+        ownerId: req.user.ownerId,
+        isDeleted: false, // ✅ Cannot update deleted items
+      },
+      {
+        ...updateData,
+        dimensions: updateData.dimensions,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!updated) {
       return res.status(404).json({
@@ -546,7 +553,6 @@ export const updateInventoryItem = async (req, res) => {
       data: updated,
     });
   } catch (error) {
-    // 🔥 DUPLICATE SERIAL NUMBER HANDLING
     if (error.code === 11000 && error.keyPattern?.serialNumber) {
       return res.status(409).json({
         success: false,
@@ -564,15 +570,19 @@ export const updateInventoryItem = async (req, res) => {
   }
 };
 
-/* DELETE */
+/* =========================
+   SOFT DELETE INVENTORY ITEM
+========================= */
 export async function deleteInventoryItem(req, res, next) {
   try {
     const { id } = req.params;
 
     const inventory = await Inventory.findOne({
       _id: id,
-      ownerId: req.user.ownerId
+      ownerId: req.user.ownerId,
+      isDeleted: false,
     });
+
     if (!inventory) {
       return res.status(404).json({
         success: false,
@@ -580,23 +590,25 @@ export async function deleteInventoryItem(req, res, next) {
       });
     }
 
-    /* 🔥 FIND SOLD RECORD */
-    const sold = await Sold.findOne({ inventoryItem: inventory._id });
+    // ✅ MOVE TO RECYCLE BIN
+    await RecycleBin.create({
+      entityType: "inventory",
+      entityId: inventory._id,
+      entityData: inventory.toObject(),
+      deletedBy: req.user.id,
+      ownerId: req.user.ownerId,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    });
 
-    if (sold) {
-      /* 🔥 DELETE INVOICE FIRST */
-      await Invoice.findOneAndDelete({ soldItem: sold._id });
-
-      /* 🔥 DELETE SOLD */
-      await sold.deleteOne();
-    }
-
-    /* 🔥 DELETE INVENTORY */
-    await inventory.deleteOne();
+    // ✅ SOFT DELETE
+    inventory.isDeleted = true;
+    inventory.deletedAt = new Date();
+    inventory.deletedBy = req.user.id;
+    await inventory.save();
 
     res.json({
       success: true,
-      message: "Inventory and related sales deleted",
+      message: "Item moved to recycle bin",
     });
   } catch (err) {
     next(err);
@@ -619,15 +631,17 @@ export const downloadImportReport = async (req, res) => {
 };
 
 /* =========================
-   GET SELLABLE INVENTORY (in_stock, pending, and partially_sold items)
+   GET SELLABLE INVENTORY
 ========================= */
 export const getSellableInventory = async (req, res) => {
   try {
     const items = await Inventory.find({
       status: { $in: ["in_stock", "pending", "partially_sold"] },
-      isDeleted: { $ne: true }, // Exclude deleted items
-      ownerId: req.user.ownerId
-    }).populate("category", "name").sort({ createdAt: -1 });
+      isDeleted: false, // ✅ EXCLUDE DELETED
+      ownerId: req.user.ownerId,
+    })
+      .populate("category", "name")
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,

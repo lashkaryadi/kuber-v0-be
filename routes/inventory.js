@@ -33,22 +33,36 @@ import {
   getSellableInventory,
 } from "../controllers/inventoryController.js";
 import { previewInventoryExcel } from "../controllers/inventoryController.js";
-
-import { protect } from "../middleware/authMiddleware.js";
+import {
+  protect,
+  restrictStaffFromCriticalFields,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+// ✅ GET - Anyone can view
 router.get("/", protect, getInventory);
+
+// ✅ CREATE - Anyone, but staff restrictions apply
 router.post("/", protect, createInventoryItem);
-router.put("/:id", protect, updateInventoryItem);
+
+// ✅ UPDATE - Staff CANNOT edit critical fields
+router.put("/:id", protect, restrictStaffFromCriticalFields, updateInventoryItem);
+
+// ✅ DELETE - Anyone can delete (moves to recycle bin)
 router.delete("/:id", protect, deleteInventoryItem);
+
+// ✅ IMPORT/EXPORT - Anyone
 router.post("/import", protect, importMiddleware, importInventoryFromExcel);
 router.get("/export", protect, exportInventoryToExcel);
 router.post("/import/preview", protect, importMiddleware, previewInventoryExcel);
 router.post("/import/confirm", protect, importMiddleware, confirmInventoryImport);
 router.post("/import/report", protect, downloadImportReport);
-router.put("/bulk-update", protect, bulkUpdateInventory);
-router.get("/sellable", protect, getSellableInventory);
 
+// ✅ BULK UPDATE - Staff restrictions apply
+router.put("/bulk-update", protect, restrictStaffFromCriticalFields, bulkUpdateInventory);
+
+// ✅ SELLABLE INVENTORY
+router.get("/sellable", protect, getSellableInventory);
 
 export default router;

@@ -40,6 +40,27 @@
 import mongoose from "mongoose";
 import Sold from "./soldModel.js";
 import Invoice from "./Invoice.js";
+
+// ✅ SHAPE SCHEMA (Core feature for gemstone inventory)
+const shapeSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 50,
+  },
+  pieces: {
+    type: Number,
+    required: true,
+    min: [0, "Pieces cannot be negative"],
+  },
+  weight: {
+    type: Number,
+    required: true,
+    min: [0, "Weight cannot be negative"],
+  },
+}, { _id: false }); // No separate ID for shapes
+
 const inventorySchema = new mongoose.Schema(
   {
     serialNumber: {
@@ -56,7 +77,18 @@ const inventorySchema = new mongoose.Schema(
       index: true,
     },
 
-    // ✅ CRITICAL: Separate total and available quantities
+    // 🔹 NEW: Shape-based inventory
+    shapes: {
+      type: [shapeSchema],
+      validate: {
+        validator: function(arr) {
+          return arr && arr.length > 0;
+        },
+        message: "At least one shape is required"
+      }
+    },
+
+    // ✅ COMPUTED FIELDS (calculated from shapes array)
     totalPieces: {
       type: Number,
       required: true,
@@ -87,7 +119,7 @@ const inventorySchema = new mongoose.Schema(
       required: true,
     },
 
-    /* 🔥 NEW REQUIRED FIELDS */
+    /* 🔥 REQUIRED FIELDS */
     purchaseCode: {
       type: String,
       required: true,
@@ -100,8 +132,7 @@ const inventorySchema = new mongoose.Schema(
       trim: true,
     },
 
-    /* ❌ NOT REQUIRED ANYMORE */
-
+    /* OPTIONAL FIELDS */
     dimensions: {
       length: {
         type: Number,
@@ -132,9 +163,20 @@ const inventorySchema = new mongoose.Schema(
       index: true,
     },
 
+    // ✅ SOFT DELETE (for recycle bin)
     isDeleted: {
       type: Boolean,
       default: false,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+    },
+
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
 
     ownerId: {
@@ -150,16 +192,19 @@ const inventorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-inventorySchema.index({ isDeleted: 1 });
+// ✅ INDEXES
+inventorySchema.index({ isDeleted: 1, ownerId: 1 });
+inventorySchema.index({ ownerId: 1, serialNumber: 1 }, { unique: true });
+inventorySchema.index({ ownerId: 1, status: 1 });
 
-// ✅ Unique serial per owner
-inventorySchema.index(
-  { ownerId: 1, serialNumber: 1 },
-  { unique: true }
-);
-
-// ✅ Validation middleware
+// ✅ PRE-SAVE MIDDLEWARE: Calculate totals from shapes
 inventorySchema.pre("save", function(next) {
+  if (this.shapes && this.shapes.length > 0) {
+    // Recalculate totals from shapes array
+    this.totalPieces = this.shapes.reduce((sum, shape) => sum + (shape.pieces || 0), 0);
+    this.totalWeight = this.shapes.reduce((sum, shape) => sum + (shape.weight || 0), 0);
+  }
+
   // Ensure available doesn't exceed total
   if (this.availablePieces > this.totalPieces) {
     return next(new Error("Available pieces cannot exceed total pieces"));
@@ -178,13 +223,27 @@ inventorySchema.pre("save", function(next) {
   ) {
     this.status = "partially_sold";
   } else if (this.status === "sold" || this.status === "partially_sold") {
-    // If fully restored, set back to in_stock
     this.status = "in_stock";
   }
 
   next();
 });
 
+// ✅ SOFT DELETE MIDDLEWARE
+inventorySchema.pre("deleteOne", { document: true }, async function (next) {
+  try {
+    // Instead of hard delete, mark as deleted
+    this.isDeleted = true;
+    this.deletedAt = new Date();
+    await this.save();
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ✅ JSON TRANSFORM (backward compatibility)
 inventorySchema.set("toJSON", {
   transform: (_, ret) => {
     ret.id = ret._id;
@@ -201,21 +260,6 @@ inventorySchema.set("toJSON", {
     delete ret.__v;
     return ret;
   },
-});
-
-inventorySchema.pre("deleteOne", { document: true }, async function (next) {
-  try {
-    const sold = await Sold.findOne({ inventoryItem: this._id });
-
-    if (sold) {
-      await Invoice.findOneAndDelete({ soldItem: sold._id });
-      await sold.deleteOne();
-    }
-
-    next();
-  } catch (err) {
-    next(err);
-  }
 });
 
 export default mongoose.model("Inventory", inventorySchema);

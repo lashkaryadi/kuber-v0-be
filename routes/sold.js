@@ -18,7 +18,10 @@ import {
   exportSoldItemsToExcel,
   markAsSold,
 } from "../controllers/soldController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import {
+  protect,
+  preventStaffSoldDeletion,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -27,7 +30,8 @@ router.get("/:id", protect, getSoldById);
 // ❌ Disabled – use mark-as-sold only
 // router.post("/", protect, recordSale);
 router.post("/mark-as-sold", protect, markAsSold);
-router.delete("/:id/undo", protect, undoSold);
+// ✅ UNDO - Admin only
+router.delete("/:id/undo", protect, preventStaffSoldDeletion, undoSold);
 // ❌ REMOVED: Update sold feature disabled
 // router.put("/:id", protect, updateSold);
 router.get("/export", protect, exportSoldItemsToExcel);

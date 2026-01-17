@@ -6,7 +6,7 @@ export const generateAccessToken = (user) =>
     {
       id: user._id,
       role: user.role,
-      ownerId: user.ownerId,
+      ownerId: user.ownerId || user._id, // ✅ CRITICAL FIX: Admin users have ownerId = null, so use their own ID
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRES }

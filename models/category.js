@@ -6,23 +6,51 @@ const categorySchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      maxlength: [100, "Category name too long"],
     },
-    description: String,
+
+    description: {
+      type: String,
+      maxlength: [500, "Description too long"],
+    },
+
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
     },
+
+    // ✅ SOFT DELETE FIELDS
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+    },
+
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   },
   { timestamps: true }
 );
 
-// ✅ UNIQUE CONSTRAINT: Category name unique per owner
+// ✅ UNIQUE INDEX (only for non-deleted categories per owner)
 categorySchema.index(
   { ownerId: 1, name: 1 },
-  { unique: true }
+  {
+    unique: true,
+    partialFilterExpression: { isDeleted: false },
+  }
 );
+
+// ✅ COMPOUND INDEX for queries
+categorySchema.index({ ownerId: 1, isDeleted: 1 });
 
 categorySchema.set("toJSON", {
   transform: (_, ret) => {
