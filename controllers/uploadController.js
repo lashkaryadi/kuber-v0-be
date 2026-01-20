@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import Inventory from "../models/inventoryModel.js";
+import Inventory from "../models/Inventory.js";
 import process from "process";
 
 export const uploadImage = async (req, res) => {

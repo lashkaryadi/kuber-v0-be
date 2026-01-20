@@ -1,6 +1,6 @@
 import AuditLog from "../models/auditLogModel.js";
-import Inventory from "../models/inventoryModel.js";
-import Sold from "../models/soldModel.js";
+import Inventory from "../models/Inventory.js";
+import Sale from "../models/Sale.js";
 import Category from "../models/Category.js";
 import { generateExcel } from "../utils/excel.js";
 

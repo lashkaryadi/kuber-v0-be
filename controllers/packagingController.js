@@ -1,5 +1,5 @@
 import Packaging from "../models/packagingModel.js";
-import inventoryModel from "../models/inventoryModel.js";
+import inventoryModel from "../models/Inventory.js";
 
 export const createPackaging = async (req, res) => {
   const { clientName, items } = req.body;

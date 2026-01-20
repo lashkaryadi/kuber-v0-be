@@ -1,5 +1,5 @@
-import Inventory from "../models/inventoryModel.js";
-import Sold from "../models/soldModel.js";
+import Inventory from "../models/Inventory.js";
+import Sale from "../models/Sale.js";
 
 export const getDashboardStats = async (req, res) => {
 try {
@@ -51,8 +51,7 @@ const inStockValue = await Inventory.find({
   );
 
 // ✅ RECENT SALES (last 5)
-const recentSales = await Sold.find({
-  ownerId,
+const recentSales = await Sale.find({
   isDeleted: { $ne: true },
 })
   .populate({

@@ -1,5 +1,5 @@
 import RecycleBin from "../models/recycleBinModel.js";
-import Inventory from "../models/inventoryModel.js";
+import Inventory from "../models/Inventory.js";
 import Category from "../models/Category.js";
 
 /* =========================

@@ -1,7 +1,7 @@
-import Inventory from "../models/inventoryModel.js";
+import Inventory from "../models/Inventory.js";
 import Packaging from "../models/Packaging.js";
 import Invoice from "../models/Invoice.js";
-import Sold from "../models/soldModel.js";
+import Sale from "../models/Sale.js";
 import Company from "../models/companyModel.js";
 import { generateInvoicePDF } from "../utils/pdfService.js";
 import Counter from "../models/Counter.js";
