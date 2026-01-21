@@ -134,9 +134,8 @@ export const getCategories = async (req, res) => {
     res.json({
       success: true,
       data: categories.map(cat => ({
-        id: cat._id.toString(),   // 🔥 IMPORTANT
+        _id: cat._id.toString(),
         name: cat.name,
-        description: cat.description,
       })),
       meta: {
         total,

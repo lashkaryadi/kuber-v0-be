@@ -6,12 +6,15 @@ export const getAllShapes = async (req, res) => {
   try {
     const ownerId = req.user.ownerId;
 
-    // Get unique shapes from inventory
-    const shapes = await Inventory.getAllUniqueShapes(ownerId);
+    // Get all shapes from Shape model
+    const shapes = await Shape.find({ ownerId, isDeleted: false }).select('_id name');
 
     res.json({
       success: true,
-      data: shapes
+      data: shapes.map(shape => ({
+        _id: shape._id.toString(),
+        name: shape.name,
+      }))
     });
   } catch (error) {
     console.error('Error fetching shapes:', error);
