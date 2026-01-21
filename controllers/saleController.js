@@ -203,6 +203,24 @@ export const getAllSales = async (req, res) => {
 
     const ownerId = req.user.ownerId;
 
+    // Validate pagination parameters to prevent resource exhaustion
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page must be a positive integer'
+      });
+    }
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Limit must be a number between 1 and 100'
+      });
+    }
+
     // Build query
     const query = { ownerId };
 
@@ -211,14 +229,14 @@ export const getAllSales = async (req, res) => {
       query.cancelled = false;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     const sales = await Sale.find(query)
       .populate('inventoryId', 'serialNumber category')
       .populate('cancelledBy', 'username email')
       .sort({ soldAt: sortOrder === 'asc' ? 1 : -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limitNum);
 
     const total = await Sale.countDocuments(query);
 
@@ -227,9 +245,9 @@ export const getAllSales = async (req, res) => {
       data: sales,
       meta: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit)),
-        limit: parseInt(limit)
+        page: pageNum,
+        pages: Math.ceil(total / limitNum),
+        limit: limitNum
       }
     });
   } catch (error) {

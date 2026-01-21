@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import Inventory from './models/inventoryModel.js';
+import Inventory from './models/Inventory.js';
 import Category from './models/Category.js';
 import User from './models/User.js';
 import RecycleBin from './models/recycleBinModel.js';

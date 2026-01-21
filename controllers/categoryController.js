@@ -69,7 +69,7 @@
 // };
 import Inventory from "../models/Inventory.js";
 import Category from "../models/Category.js";
-import RecycleBin from "../models/recycleBinModel.js";
+import RecycleBin from "../models/RecycleBin.js";
 import { generateExcel } from "../utils/excel.js";
 
 /* =========================
@@ -83,25 +83,51 @@ export const getCategories = async (req, res) => {
       limit = 20,
     } = req.query;
 
+    // Validate pagination parameters to prevent resource exhaustion
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page must be a positive integer'
+      });
+    }
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Limit must be a number between 1 and 100'
+      });
+    }
+
     const query = {
       ownerId: req.user.ownerId,
       isDeleted: false, // ✅ EXCLUDE DELETED
     };
 
     if (search) {
+      // Validate search length to prevent ReDoS attacks
+      if (typeof search !== 'string' || search.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: 'Search term must be a string with maximum 50 characters'
+        });
+      }
+
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     const [categories, total] = await Promise.all([
       Category.find(query)
         .sort({ name: 1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(limitNum),
       Category.countDocuments(query),
     ]);
 
@@ -110,8 +136,8 @@ export const getCategories = async (req, res) => {
       data: categories,
       meta: {
         total,
-        page: Number(page),
-        pages: Math.ceil(total / limit),
+        page: pageNum,
+        pages: Math.ceil(total / limitNum),
       },
     });
   } catch (err) {
@@ -128,28 +154,34 @@ export const createCategory = async (req, res) => {
   try {
     const { name, description } = req.body;
 
-    if (!name) {
+    if (!name?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Category name is required",
       });
     }
 
-    // ✅ CHECK IF EXISTS FOR THIS OWNER
-    const existing = await Category.findOne({
-      name: { $regex: new RegExp(`^${name}$`, "i") },
+    const cleanName = name.trim().toUpperCase();
+
+    // 🔒 STRICT DUPLICATE CHECK (case-insensitive, non-deleted)
+    const exists = await Category.findOne({
       ownerId: req.user.ownerId,
+      name: cleanName,
+      isDeleted: false,
     });
 
-    if (existing) {
+    if (exists) {
       return res.status(409).json({
         success: false,
-        message: "Category with this name already exists for your account",
+        message: "Category already exists",
       });
     }
 
+    const code = cleanName.substring(0, 2);
+
     const category = await Category.create({
-      name,
+      name: cleanName,
+      code,
       description,
       ownerId: req.user.ownerId,
     });
@@ -158,18 +190,20 @@ export const createCategory = async (req, res) => {
       success: true,
       data: category,
     });
-  } catch (err) {
-    if (err.code === 11000) {
+  } catch (error) {
+    console.error("Create category error:", error);
+
+    // Mongo duplicate fallback (extra safety)
+    if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "Category with this name already exists",
+        message: "Category already exists",
       });
     }
 
-    console.error("Create category error:", err);
     res.status(500).json({
       success: false,
-      message: "Failed to create category",
+      message: "Internal server error",
     });
   }
 };
@@ -194,7 +228,7 @@ export const updateCategory = async (req, res) => {
 };
 
 /* =========================
-   SOFT DELETE CATEGORY
+   DELETE CATEGORY
 ========================= */
 export const deleteCategory = async (req, res) => {
   try {
@@ -226,21 +260,21 @@ export const deleteCategory = async (req, res) => {
       });
     }
 
-    // ✅ MOVE TO RECYCLE BIN
+    // Move to recycle bin
     await RecycleBin.create({
       entityType: "category",
       entityId: category._id,
       entityData: category.toObject(),
-      deletedBy: req.user.id,
+      deletedBy: {
+        username: req.user.username,
+        email: req.user.email,
+      },
       ownerId: req.user.ownerId,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    // ✅ SOFT DELETE
-    category.isDeleted = true;
-    category.deletedAt = new Date();
-    category.deletedBy = req.user.id;
-    await category.save();
+    // Actually delete the category from the database
+    await Category.findByIdAndDelete(category._id);
 
     res.json({
       success: true,

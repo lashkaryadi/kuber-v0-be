@@ -1,7 +1,8 @@
 import Inventory from '../models/Inventory.js';
 import Category from '../models/Category.js';
 import Shape from '../models/Shape.js';
-import RecycleBin from '../models/recycleBinModel.js';
+import RecycleBin from '../models/RecycleBin.js';
+import { generateExcel } from '../utils/excel.js';
 
 // ==================== GET ALL INVENTORY ====================
 export const getAllInventory = async (req, res) => {
@@ -19,11 +20,37 @@ export const getAllInventory = async (req, res) => {
 
     const ownerId = req.user.ownerId;
 
+    // Validate pagination parameters to prevent resource exhaustion
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page must be a positive integer'
+      });
+    }
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Limit must be a number between 1 and 100'
+      });
+    }
+
     // Build query
     const query = { ownerId, isDeleted: false };
 
     // Search
     if (search) {
+      // Validate search length to prevent ReDoS attacks
+      if (typeof search !== 'string' || search.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: 'Search term must be a string with maximum 50 characters'
+        });
+      }
+
       query.$or = [
         { serialNumber: new RegExp(search, 'i') },
         { purchaseCode: new RegExp(search, 'i') },
@@ -58,19 +85,32 @@ export const getAllInventory = async (req, res) => {
       ];
     }
 
+    // Validate allowed sort fields to prevent NoSQL injection
+    const allowedSortFields = [
+      'createdAt', 'updatedAt', 'serialNumber', 'totalPieces',
+      'totalWeight', 'availablePieces', 'availableWeight', 'status'
+    ];
+
+    if (!allowedSortFields.includes(sortBy)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid sort field. Allowed fields: ${allowedSortFields.join(', ')}`
+      });
+    }
+
     // Sorting
     const sortOptions = {};
     sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
     // Execute query with pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([
       Inventory.find(query)
         .populate('category', 'name')
         .sort(sortOptions)
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(limitNum)
         .lean(),
       Inventory.countDocuments(query)
     ]);
@@ -96,9 +136,9 @@ export const getAllInventory = async (req, res) => {
       data: transformedItems,
       meta: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum)
       }
     });
   } catch (error) {
@@ -413,13 +453,13 @@ export const deleteInventory = async (req, res) => {
       });
     }
 
-    const inventory = await Inventory.findOne({
+    const item = await Inventory.findOne({
       _id: id,
       ownerId,
       isDeleted: false
     });
 
-    if (!inventory) {
+    if (!item) {
       return res.status(404).json({
         success: false,
         message: 'Inventory item not found'
@@ -428,19 +468,19 @@ export const deleteInventory = async (req, res) => {
 
     // Move to recycle bin
     await RecycleBin.create({
-      entityType: 'inventory',
-      entityId: inventory._id,
-      entityData: inventory.toObject(),
-      deletedBy: req.user.id,
+      entityType: "inventory",
+      entityId: item._id,
+      entityData: item.toObject(),
+      deletedBy: {
+        username: req.user.username,
+        email: req.user.email,
+      },
       ownerId: req.user.ownerId,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    // Soft delete
-    inventory.isDeleted = true;
-    inventory.deletedAt = new Date();
-    inventory.deletedBy = req.user.id;
-    await inventory.save();
+    // Actually delete the item from inventory
+    await Inventory.findByIdAndDelete(item._id);
 
     res.status(200).json({
       success: true,
@@ -510,6 +550,7 @@ export const bulkUpdateInventory = async (req, res) => {
 };
 
 // ==================== EXPORT INVENTORY ====================
+
 export const exportInventoryExcel = async (req, res) => {
   try {
     const { category, status, shape } = req.query;
@@ -561,20 +602,23 @@ export const exportInventoryExcel = async (req, res) => {
       'Created At': item.createdAt
     }));
 
-    // Generate Excel (you need to implement this utility)
-    // const buffer = generateExcel(excelData);
+    const buffer = generateExcel(excelData);
 
-    // For now, return JSON
-    res.json({
-      success: true,
-      data: excelData
-    });
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=inventory.xlsx"
+    );
+
+    res.send(buffer);
   } catch (error) {
-    console.error('Error exporting inventory:', error);
+    console.error('Export inventory error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to export inventory',
-      error: error.message
     });
   }
 };

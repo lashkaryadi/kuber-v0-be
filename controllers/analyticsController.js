@@ -1,5 +1,5 @@
 import Sale from "../models/Sale.js";
-// import Inventory from "../models/inventoryModel.js";
+// import Inventory from "../models/Inventory.js";
 import mongoose from "mongoose";
 
 export const getProfitAnalytics = async (req, res) => {

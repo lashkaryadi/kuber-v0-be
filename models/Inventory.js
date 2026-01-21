@@ -311,7 +311,7 @@ inventorySchema.statics.getAllUniqueShapes = async function(ownerId) {
     ownerId,
     shapeType: 'single',
     isDeleted: false,
-    singleShape: { $ne: null, $ne: '' }
+    singleShape: { $ne: '' }
   });
 
   // Get mix shapes
@@ -348,6 +348,7 @@ inventorySchema.statics.generateSerialNumber = async function(categoryId, ownerI
     return `GEN${String(count + 1).padStart(3, '0')}`;
   }
 
+  // Lazy-load Category to avoid circular import issues
   const Category = mongoose.model('Category');
   const category = await Category.findById(categoryId);
 
@@ -377,5 +378,6 @@ inventorySchema.statics.generateSerialNumber = async function(categoryId, ownerI
 
   return `${prefix}${String(nextNumber).padStart(3, '0')}`;
 };
+
 
 export default mongoose.model('Inventory', inventorySchema);

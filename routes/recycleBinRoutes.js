@@ -1,24 +1,17 @@
 import express from "express";
 import {
-  getRecycleBinItems,
+  getRecycleBin,
   restoreItems,
-  permanentlyDeleteItems,
-  emptyRecycleBin,
+  deleteItems,
+  emptyBin,
 } from "../controllers/recycleBinController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Get recycle bin items
-router.get("/", protect, getRecycleBinItems);
-
-// Restore items
+router.get("/", protect, getRecycleBin);
 router.post("/restore", protect, restoreItems);
-
-// Permanently delete items
-router.delete("/delete", protect, permanentlyDeleteItems);
-
-// Empty entire recycle bin
-router.delete("/empty", protect, emptyRecycleBin);
+router.delete("/delete", protect, deleteItems);
+router.post("/empty", protect, emptyBin);
 
 export default router;

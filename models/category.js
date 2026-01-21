@@ -6,7 +6,21 @@ const categorySchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      uppercase: true,
       maxlength: [100, "Category name too long"],
+    },
+
+    code: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      maxlength: [10, "Category code too long"],
+    },
+
+    serialCounter: {
+      type: Number,
+      default: 0,
     },
 
     description: {
