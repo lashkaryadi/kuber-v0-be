@@ -1,4 +1,6 @@
-import jwt from "jsonwebtoken";
+import jwt from "jsonwebtoken"
+import dotenv from "dotenv";
+dotenv.config();;
 import process from "process";
 
 export const generateAccessToken = (user) =>

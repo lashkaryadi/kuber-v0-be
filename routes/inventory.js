@@ -1,25 +1,33 @@
 import express from 'express';
 import * as inventoryController from '../controllers/inventoryController.js';
-// import auth from '../middleware/authMiddleware.js'; // If you have auth
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+// ==================== SHAPE ROUTES ====================
 // Get all shapes for filter dropdown
-router.get('/shapes', inventoryController.getAllShapes);
+router.get('/shapes', protect, inventoryController.getAllShapes);
 
-// Get all inventory (with shape filter support)
-router.get('/', inventoryController.getAllInventory);
+// ==================== INVENTORY ROUTES ====================
+// Get all inventory (with filters, search, pagination)
+router.get('/', protect, inventoryController.getAllInventory);
 
-// Get single inventory
-router.get('/:id', inventoryController.getInventoryById);
+// Get single inventory item
+router.get('/:id', protect, inventoryController.getInventoryById);
 
-// Create inventory
-router.post('/', inventoryController.createInventory);
+// Create inventory item
+router.post('/', protect, inventoryController.createInventory);
 
-// Update inventory
-router.put('/:id', inventoryController.updateInventory);
+// Update inventory item
+router.put('/:id', protect, inventoryController.updateInventory);
 
-// Delete inventory
-router.delete('/:id', inventoryController.deleteInventory);
+// Delete inventory item (soft delete, admin only)
+router.delete('/:id', protect, inventoryController.deleteInventory);
+
+// Bulk update inventory items
+router.post('/bulk-update', protect, inventoryController.bulkUpdateInventory);
+
+// Export inventory to Excel
+router.get('/export/excel', protect, inventoryController.exportInventoryExcel);
 
 export default router;

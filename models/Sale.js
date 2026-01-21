@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 
-// Shape-wise sale detail schema
+// ==================== SOLD SHAPE SCHEMA ====================
 const soldShapeSchema = new mongoose.Schema({
-  shapeName: {
+  shape: {
     type: String,
     required: true
   },
@@ -18,200 +18,123 @@ const soldShapeSchema = new mongoose.Schema({
   },
   pricePerCarat: {
     type: Number,
-    required: true,
+    default: 0,
     min: 0
   },
   lineTotal: {
     type: Number,
-    required: true,
+    default: 0,
     min: 0
   }
 }, { _id: false });
 
-// Sale item schema
-const saleItemSchema = new mongoose.Schema({
+// ==================== SALE SCHEMA ====================
+const saleSchema = new mongoose.Schema({
+  // Reference to inventory item
   inventoryId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Inventory',
-    required: true
-  },
-  serialNumber: {
-    type: String,
-    required: true
-  },
-  category: {
-    type: String,
-    required: true
-  },
-  shapeType: {
-    type: String,
-    enum: ['single', 'mix'],
-    required: true
+    ref: "Inventory",
+    required: true,
+    index: true
   },
 
-  // For single shape sales
-  singleShape: {
-    shapeName: String,
-    pieces: Number,
-    weight: Number,
-    pricePerCarat: Number,
-    lineTotal: Number
-  },
-
-  // For mix shape sales
+  // Shapes that were sold
   soldShapes: [soldShapeSchema],
 
+  // Sale totals
   totalPieces: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
+
   totalWeight: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
+
   totalAmount: {
     type: Number,
-    required: true
-  }
-}, { _id: true });
+    required: true,
+    min: 0
+  },
 
-const saleSchema = new mongoose.Schema({
+  // Customer information
+  customer: {
+    name: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    email: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    phone: {
+      type: String,
+      trim: true,
+      default: ""
+    }
+  },
+
+  // Invoice details
   invoiceNumber: {
     type: String,
-    required: true,
-    unique: true
+    trim: true,
+    index: true
   },
 
-  saleDate: {
+  soldAt: {
     type: Date,
+    default: Date.now,
+    index: true
+  },
+
+  // Multi-tenancy
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
     required: true,
-    default: Date.now
+    index: true
   },
 
-  customer: {
-    name: String,
-    phone: String,
-    email: String,
-    address: String
-  },
-
-  items: [saleItemSchema],
-
-  subtotal: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-
-  taxRate: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 100
-  },
-
-  taxAmount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-
-  discount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-
-  grandTotal: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-
-  paymentStatus: {
-    type: String,
-    enum: ['Pending', 'Partial', 'Paid'],
-    default: 'Pending'
-  },
-
-  paymentMethod: {
-    type: String,
-    enum: ['Cash', 'Card', 'Bank Transfer', 'Cheque', 'UPI'],
-    default: 'Cash'
-  },
-
-  amountPaid: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-
-  notes: {
-    type: String
-  },
-
-  status: {
-    type: String,
-    enum: ['Active', 'Cancelled', 'Voided'],
-    default: 'Active'
+  // Cancellation fields
+  cancelled: {
+    type: Boolean,
+    default: false,
+    index: true
   },
 
   cancelledAt: {
     type: Date
   },
 
-  cancelReason: {
-    type: String
+  cancelledBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
   },
 
-  isDeleted: {
-    type: Boolean,
-    default: false
+  cancelReason: {
+    type: String,
+    trim: true,
+    default: ""
   }
 }, {
   timestamps: true
 });
 
-// Pre-save middleware to calculate totals
-saleSchema.pre('save', function(next) {
-  // Calculate subtotal from items
-  this.subtotal = this.items.reduce((sum, item) => sum + item.totalAmount, 0);
+// ==================== INDEXES ====================
+saleSchema.index({ ownerId: 1, cancelled: 1 });
+saleSchema.index({ inventoryId: 1 });
+saleSchema.index({ invoiceNumber: 1 });
+saleSchema.index({ soldAt: -1 });
+saleSchema.index({ createdAt: -1 });
 
-  // Calculate tax
-  this.taxAmount = (this.subtotal * this.taxRate) / 100;
-
-  // Calculate grand total
-  this.grandTotal = this.subtotal + this.taxAmount - this.discount;
-
-  next();
+// ==================== VIRTUAL FIELDS ====================
+saleSchema.virtual('isActive').get(function() {
+  return !this.cancelled;
 });
-
-// Method to get shape-wise breakdown
-saleSchema.methods.getShapeBreakdown = function() {
-  const breakdown = {};
-
-  this.items.forEach(item => {
-    if (item.shapeType === 'single' && item.singleShape) {
-      const shapeName = item.singleShape.shapeName;
-      if (!breakdown[shapeName]) {
-        breakdown[shapeName] = { pieces: 0, weight: 0, amount: 0 };
-      }
-      breakdown[shapeName].pieces += item.singleShape.pieces;
-      breakdown[shapeName].weight += item.singleShape.weight;
-      breakdown[shapeName].amount += item.singleShape.lineTotal;
-    } else if (item.shapeType === 'mix' && item.soldShapes) {
-      item.soldShapes.forEach(shape => {
-        if (!breakdown[shape.shapeName]) {
-          breakdown[shape.shapeName] = { pieces: 0, weight: 0, amount: 0 };
-        }
-        breakdown[shape.shapeName].pieces += shape.pieces;
-        breakdown[shape.shapeName].weight += shape.weight;
-        breakdown[shape.shapeName].amount += shape.lineTotal;
-      });
-    }
-  });
-
-  return breakdown;
-};
 
 export default mongoose.model('Sale', saleSchema);

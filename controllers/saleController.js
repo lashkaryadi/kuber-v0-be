@@ -1,244 +1,235 @@
-import Sale from '../models/Sale.js';
 import Inventory from '../models/Inventory.js';
-import mongoose from 'mongoose';
+import Sale from '../models/Sale.js';
 
-// Create new sale
-export const createSale = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+// ==================== SELL INVENTORY ====================
+export const sellInventory = async (req, res) => {
   try {
-    const { 
-      customer = {}, 
-      items, 
-      taxRate = 0, 
-      discount = 0, 
-      paymentMethod = 'Cash', 
-      paymentStatus = 'Paid', 
-      amountPaid = 0, 
-      notes = '' 
-    } = req.body;
+    const { inventoryId, soldShapes, customer, invoiceNumber } = req.body;
+    const ownerId = req.user.ownerId;
 
-    // Validate items
-    if (!items || items.length === 0) {
-      throw new Error('At least one item is required');
-    }
-
-    // Generate invoice number
-    const invoiceNumber = await generateInvoiceNumber();
-
-    // Process each item and validate availability
-    const processedItems = [];
-
-    for (const item of items) {
-      const inventory = await Inventory.findById(item.inventoryId).session(session);
-
-      if (!inventory) {
-        throw new Error(`Inventory item ${item.inventoryId} not found`);
-      }
-
-      if (inventory.shapeType === 'single') {
-        // Validate single shape sale
-        if (!item.singleShape) {
-          throw new Error(`Single shape data required for ${inventory.serialNumber}`);
-        }
-
-        if (item.singleShape.pieces > inventory.availablePieces) {
-          throw new Error(`Insufficient pieces for ${inventory.serialNumber}`);
-        }
-
-        if (item.singleShape.weight > inventory.availableWeight) {
-          throw new Error(`Insufficient weight for ${inventory.serialNumber}`);
-        }
-
-        // Calculate line total
-        item.singleShape.lineTotal = item.singleShape.weight * item.singleShape.pricePerCarat;
-        item.totalAmount = item.singleShape.lineTotal;
-        item.totalPieces = item.singleShape.pieces;
-        item.totalWeight = item.singleShape.weight;
-
-        // Reduce inventory
-        inventory.reduceQuantity(
-          inventory.singleShape,
-          item.singleShape.pieces,
-          item.singleShape.weight
-        );
-
-      } else if (inventory.shapeType === 'mix') {
-        // Validate mix shape sale
-        if (!item.soldShapes || item.soldShapes.length === 0) {
-          throw new Error(`Shape data required for ${inventory.serialNumber}`);
-        }
-
-        let totalPieces = 0;
-        let totalWeight = 0;
-        let totalAmount = 0;
-
-        for (const soldShape of item.soldShapes) {
-          const invShape = inventory.shapes.find(s => s.shapeName === soldShape.shapeName);
-
-          if (!invShape) {
-            throw new Error(`Shape ${soldShape.shapeName} not found in ${inventory.serialNumber}`);
-          }
-
-          if (soldShape.pieces > invShape.pieces) {
-            throw new Error(`Insufficient pieces for ${soldShape.shapeName} in ${inventory.serialNumber}`);
-          }
-
-          if (soldShape.weight > invShape.weight) {
-            throw new Error(`Insufficient weight for ${soldShape.shapeName} in ${inventory.serialNumber}`);
-          }
-
-          // Calculate line total for this shape
-          soldShape.lineTotal = soldShape.weight * soldShape.pricePerCarat;
-
-          totalPieces += soldShape.pieces;
-          totalWeight += soldShape.weight;
-          totalAmount += soldShape.lineTotal;
-
-          // Reduce inventory for this shape
-          inventory.reduceQuantity(soldShape.shapeName, soldShape.pieces, soldShape.weight);
-        }
-
-        item.totalPieces = totalPieces;
-        item.totalWeight = totalWeight;
-        item.totalAmount = totalAmount;
-      }
-
-      // Save inventory changes
-      await inventory.save({ session });
-
-      // Add processed item data
-      processedItems.push({
-        inventoryId: inventory._id,
-        serialNumber: inventory.serialNumber,
-        category: inventory.category.name || inventory.category,
-        shapeType: inventory.shapeType,
-        singleShape: item.singleShape,
-        soldShapes: item.soldShapes,
-        totalPieces: item.totalPieces,
-        totalWeight: item.totalWeight,
-        totalAmount: item.totalAmount
+    // ==================== VALIDATION ====================
+    if (!inventoryId || !soldShapes || soldShapes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Inventory ID and sold shapes are required'
       });
     }
 
-    // Create sale document
-    const sale = new Sale({
-      invoiceNumber,
-      saleDate: new Date(),
-      customer,
-      items: processedItems,
-      taxRate: taxRate || 0,
-      discount: discount || 0,
-      paymentMethod,
-      paymentStatus: paymentStatus || 'Pending',
-      amountPaid: amountPaid || 0,
-      notes
+    // Find inventory
+    const inventory = await Inventory.findOne({
+      _id: inventoryId,
+      ownerId,
+      isDeleted: false
     });
 
-    await sale.save({ session });
+    if (!inventory) {
+      return res.status(404).json({
+        success: false,
+        message: 'Inventory item not found'
+      });
+    }
 
-    await session.commitTransaction();
+    // Check if item is already sold
+    if (inventory.status === 'sold') {
+      return res.status(400).json({
+        success: false,
+        message: 'This item is already sold'
+      });
+    }
 
-    res.status(201).json({
+    // ==================== VALIDATE EACH SHAPE ====================
+    for (const sold of soldShapes) {
+      if (inventory.shapeType === 'single') {
+        // For single shape
+        if (sold.pieces > inventory.availablePieces) {
+          return res.status(400).json({
+            success: false,
+            message: `Only ${inventory.availablePieces} pieces available`
+          });
+        }
+        if (sold.weight > inventory.availableWeight) {
+          return res.status(400).json({
+            success: false,
+            message: `Only ${inventory.availableWeight} carats available`
+          });
+        }
+      } else {
+        // For mix shapes
+        const invShape = inventory.shapes.find(s => s.shape === sold.shape);
+        if (!invShape) {
+          return res.status(400).json({
+            success: false,
+            message: `Shape "${sold.shape}" not found in inventory`
+          });
+        }
+        if (sold.pieces > invShape.pieces) {
+          return res.status(400).json({
+            success: false,
+            message: `Only ${invShape.pieces} pieces of ${sold.shape} available`
+          });
+        }
+        if (sold.weight > invShape.weight) {
+          return res.status(400).json({
+            success: false,
+            message: `Only ${invShape.weight} carats of ${sold.shape} available`
+          });
+        }
+      }
+    }
+
+    // ==================== REDUCE INVENTORY QUANTITIES ====================
+    for (const sold of soldShapes) {
+      if (inventory.shapeType === 'single') {
+        inventory.reduceQuantity(null, sold.pieces, sold.weight);
+      } else {
+        inventory.reduceQuantity(sold.shape, sold.pieces, sold.weight);
+      }
+    }
+
+    await inventory.save();
+
+    // ==================== CREATE SALE RECORD ====================
+    const totalPieces = soldShapes.reduce((sum, s) => sum + s.pieces, 0);
+    const totalWeight = soldShapes.reduce((sum, s) => sum + s.weight, 0);
+    const totalAmount = soldShapes.reduce((sum, s) => sum + (s.lineTotal || 0), 0);
+
+    const sale = await Sale.create({
+      inventoryId,
+      soldShapes,
+      totalPieces,
+      totalWeight,
+      totalAmount,
+      customer: customer || {},
+      invoiceNumber: invoiceNumber || '',
+      ownerId
+    });
+
+    // Populate references
+    await sale.populate('inventoryId', 'serialNumber category');
+
+    res.json({
       success: true,
-      message: 'Sale created successfully',
+      message: 'Sale completed successfully',
       data: sale
     });
-
   } catch (error) {
-    await session.abortTransaction();
-    console.error('Error creating sale:', error);
+    console.error('Error selling inventory:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to create sale'
+      message: 'Failed to complete sale',
+      error: error.message
     });
-  } finally {
-    session.endSession();
   }
 };
 
-// Generate invoice number
-async function generateInvoiceNumber() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
+// ==================== UNDO SALE ====================
+export const undoSale = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ownerId = req.user.ownerId;
+    const userRole = req.user.role;
 
-  const prefix = `INV-${year}${month}`;
+    // ADMIN ONLY
+    if (userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can undo sales'
+      });
+    }
 
-  const lastSale = await Sale.findOne({
-    invoiceNumber: new RegExp(`^${prefix}`)
-  }).sort({ invoiceNumber: -1 });
+    const sale = await Sale.findOne({ _id: id, ownerId });
+    if (!sale) {
+      return res.status(404).json({
+        success: false,
+        message: "Sale not found"
+      });
+    }
 
-  let sequence = 1;
-  if (lastSale) {
-    const lastSequence = parseInt(lastSale.invoiceNumber.split('-').pop());
-    sequence = lastSequence + 1;
+    if (sale.cancelled) {
+      return res.status(400).json({
+        success: false,
+        message: "Sale already cancelled"
+      });
+    }
+
+    const inventory = await Inventory.findById(sale.inventoryId);
+    if (!inventory) {
+      return res.status(404).json({
+        success: false,
+        message: "Inventory not found"
+      });
+    }
+
+    // ==================== RESTORE SHAPES ====================
+    for (const sold of sale.soldShapes) {
+      if (inventory.shapeType === 'single') {
+        inventory.restoreQuantity(null, sold.pieces, sold.weight);
+      } else {
+        inventory.restoreQuantity(sold.shape, sold.pieces, sold.weight);
+      }
+    }
+
+    await inventory.save();
+
+    // ==================== MARK SALE AS CANCELLED ====================
+    sale.cancelled = true;
+    sale.cancelledAt = new Date();
+    sale.cancelledBy = req.user.id;
+    await sale.save();
+
+    res.json({
+      success: true,
+      message: "Sale successfully undone"
+    });
+  } catch (error) {
+    console.error('Error undoing sale:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to undo sale',
+      error: error.message
+    });
   }
+};
 
-  return `${prefix}-${String(sequence).padStart(5, '0')}`;
-}
-
-// Get all sales
+// ==================== GET ALL SALES ====================
 export const getAllSales = async (req, res) => {
   try {
     const {
-      search,
-      status,
-      shape,  // NEW: shape filter
-      startDate,
-      endDate,
       page = 1,
-      limit = 10
+      limit = 10,
+      sortOrder = 'desc',
+      includeCancelled = 'false'
     } = req.query;
 
-    const query = { isDeleted: false, status: { $ne: 'Cancelled' } };
+    const ownerId = req.user.ownerId;
 
-    if (search) {
-      query.$or = [
-        { invoiceNumber: new RegExp(search, 'i') },
-        { 'customer.name': new RegExp(search, 'i') }
-      ];
-    }
+    // Build query
+    const query = { ownerId };
 
-    if (status && status !== 'All Status') {
-      query.paymentStatus = status;
-    }
-
-    if (startDate && endDate) {
-      query.saleDate = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    // NEW: Filter by shape
-    if (shape && shape !== 'All Shapes') {
-      query.$or = [
-        { 'items.singleShape.shapeName': shape },
-        { 'items.soldShapes.shapeName': shape }
-      ];
+    // Exclude cancelled sales by default
+    if (includeCancelled === 'false') {
+      query.cancelled = false;
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [sales, total] = await Promise.all([
-      Sale.find(query)
-        .sort({ saleDate: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      Sale.countDocuments(query)
-    ]);
+    const sales = await Sale.find(query)
+      .populate('inventoryId', 'serialNumber category')
+      .populate('cancelledBy', 'username email')
+      .sort({ soldAt: sortOrder === 'asc' ? 1 : -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    res.status(200).json({
+    const total = await Sale.countDocuments(query);
+
+    res.json({
       success: true,
       data: sales,
-      pagination: {
+      meta: {
         total,
         page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil(total / parseInt(limit)),
+        limit: parseInt(limit)
       }
     });
   } catch (error) {
@@ -251,12 +242,15 @@ export const getAllSales = async (req, res) => {
   }
 };
 
-// Get single sale
+// ==================== GET SINGLE SALE ====================
 export const getSaleById = async (req, res) => {
   try {
     const { id } = req.params;
+    const ownerId = req.user.ownerId;
 
-    const sale = await Sale.findById(id).populate('items.inventoryId');
+    const sale = await Sale.findOne({ _id: id, ownerId })
+      .populate('inventoryId', 'serialNumber category singleShape shapes')
+      .populate('cancelledBy', 'username email');
 
     if (!sale) {
       return res.status(404).json({
@@ -265,7 +259,7 @@ export const getSaleById = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    res.json({
       success: true,
       data: sale
     });
@@ -276,84 +270,6 @@ export const getSaleById = async (req, res) => {
       message: 'Failed to fetch sale',
       error: error.message
     });
-  }
-};
-
-// Cancel/Void sale
-export const cancelSale = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
-
-    const sale = await Sale.findById(id).session(session);
-
-    if (!sale) {
-      throw new Error('Sale not found');
-    }
-
-    if (sale.status === 'Cancelled') {
-      throw new Error('Sale is already cancelled');
-    }
-
-    // Restore inventory quantities
-    for (const item of sale.items) {
-      const inventory = await Inventory.findById(item.inventoryId).session(session);
-
-      if (inventory) {
-        if (item.shapeType === 'single') {
-          inventory.availablePieces += item.singleShape.pieces;
-          inventory.availableWeight += item.singleShape.weight;
-        } else if (item.shapeType === 'mix') {
-          for (const soldShape of item.soldShapes) {
-            const invShape = inventory.shapes.find(s => s.shapeName === soldShape.shapeName);
-            if (invShape) {
-              invShape.pieces += soldShape.pieces;
-              invShape.weight += soldShape.weight;
-            }
-          }
-
-          inventory.availablePieces = inventory.shapes.reduce((sum, s) => sum + s.pieces, 0);
-          inventory.availableWeight = inventory.shapes.reduce((sum, s) => sum + s.weight, 0);
-        }
-
-        // Update status
-        if (inventory.availablePieces === inventory.totalPieces) {
-          inventory.status = 'In Stock';
-        } else {
-          inventory.status = 'Partially Sold';
-        }
-
-        await inventory.save({ session });
-      }
-    }
-
-    // Update sale status
-    sale.status = 'Cancelled';
-    sale.cancelledAt = new Date();
-    sale.cancelReason = reason;
-
-    await sale.save({ session });
-
-    await session.commitTransaction();
-
-    res.status(200).json({
-      success: true,
-      message: 'Sale cancelled successfully',
-      data: sale
-    });
-
-  } catch (error) {
-    await session.abortTransaction();
-    console.error('Error cancelling sale:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to cancel sale'
-    });
-  } finally {
-    session.endSession();
   }
 };
 

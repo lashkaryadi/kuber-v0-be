@@ -1,122 +1,149 @@
-// import mongoose from "mongoose";
-
-// const invoiceSchema = new mongoose.Schema({
-//   packaging: {
-//     type: mongoose.Schema.Types.ObjectId,
-//     ref: "Packaging",
-//   },
-
-//   clientName: String,
-
-//   items: [
-//     {
-//       inventory: {
-//         type: mongoose.Schema.Types.ObjectId,
-//         ref: "Inventory",
-//       },
-//       weight: Number,
-//       pricePerCarat: Number,
-//       amount: Number,
-//     },
-//   ],
-
-//   subtotal: Number,
-//   tax: Number,
-//   totalAmount: Number,
-
-//   status: {
-//     type: String,
-//     enum: ["paid", "unpaid"],
-//     default: "unpaid",
-//   },
-
-// }, { timestamps: true });
-
-// export default mongoose.model("Invoice", invoiceSchema);
-
-import mongoose from "mongoose";
-
-const revisionSchema = new mongoose.Schema({
-  updatedAt: Date,
-  updatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  },
-  previousSnapshot: Object,
-});
+import mongoose from 'mongoose';
 
 const invoiceItemSchema = new mongoose.Schema({
-  soldId: {
+  inventoryId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Sold",
-    required: true,
+    ref: 'Inventory',
+    required: true
   },
-  serialNumber: String,
-  category: String,
-  weight: Number,
-  weightUnit: String,
-  pieces: Number,
-  price: Number,
-  currency: String,
-  amount: Number,
+  serialNumber: {
+    type: String,
+    required: true
+  },
+  category: {
+    id: mongoose.Schema.Types.ObjectId,
+    name: String
+  },
+  shapes: [{
+    shapeName: String,
+    pieces: Number,
+    weight: Number
+  }],
+  soldPieces: {
+    type: Number,
+    required: true
+  },
+  soldWeight: {
+    type: Number,
+    required: true
+  },
+  unitPrice: {
+    type: Number,
+    required: true
+  },
+  lineTotal: {
+    type: Number,
+    required: true
+  }
 });
 
-const invoiceSchema = new mongoose.Schema(
-  {
-    invoiceNumber: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-
-    invoiceDate: {
-      type: Date,
-      default: Date.now,
-    },
-
-    buyer: String,
-
-    items: [invoiceItemSchema], // ✅ MULTIPLE ITEMS
-
-    subtotal: Number,
-
-    taxRate: { type: Number, default: 0 },
-
-    cgstAmount: Number,
-    sgstAmount: Number,
-    taxAmount: Number,
-
-    totalAmount: Number,
-
-    notes: String,
-
-    paymentTerms: {
-      type: String,
-      default: "Payment due within 7 days",
-    },
-
-    isLocked: {
-      type: Boolean,
-      default: false,
-    },
-
-    // 🧾 Multiple sold items per invoice
-    soldItems: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Sold",
-    }],
-
-    revisionHistory: [revisionSchema],
-
-    ownerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
-    },
+const invoiceSchema = new mongoose.Schema({
+  invoiceNumber: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true
   },
-  { timestamps: true }
-);
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Customer' // Assuming there's a Customer model
+  },
+  customerName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  customerEmail: {
+    type: String,
+    trim: true
+  },
+  customerPhone: {
+    type: String,
+    trim: true
+  },
+  customerAddress: {
+    type: String,
+    trim: true
+  },
+  items: [invoiceItemSchema],
+  subtotal: {
+    type: Number,
+    required: true
+  },
+  taxRate: {
+    type: Number,
+    default: 0
+  },
+  taxAmount: {
+    type: Number,
+    default: 0
+  },
+  discount: {
+    type: Number,
+    default: 0
+  },
+  total: {
+    type: Number,
+    required: true
+  },
+  currency: {
+    type: String,
+    default: 'USD'
+  },
+  status: {
+    type: String,
+    enum: ['draft', 'sent', 'paid', 'overdue', 'cancelled'],
+    default: 'draft'
+  },
+  issueDate: {
+    type: Date,
+    default: Date.now
+  },
+  dueDate: {
+    type: Date
+  },
+  paymentTerms: {
+    type: String,
+    default: 'Net 30'
+  },
+  notes: {
+    type: String,
+    trim: true
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  locked: {
+    type: Boolean,
+    default: false
+  },
+  lockedAt: {
+    type: Date
+  },
+  lockedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
 
-export default mongoose.model("Invoice", invoiceSchema);
+invoiceSchema.pre('save', function() {
+  this.updatedAt = Date.now();
+});
 
+// Create indexes for better query performance
+invoiceSchema.index({ invoiceNumber: 1 });
+invoiceSchema.index({ customerId: 1 });
+invoiceSchema.index({ status: 1 });
+invoiceSchema.index({ createdAt: -1 });
+
+export default mongoose.model('Invoice', invoiceSchema);
