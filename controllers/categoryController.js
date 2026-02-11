@@ -136,6 +136,9 @@ export const getCategories = async (req, res) => {
       data: categories.map(cat => ({
         _id: cat._id.toString(),
         name: cat.name,
+        description: cat.description || '',
+        createdAt: cat.createdAt,
+        isDeleted: cat.isDeleted,
       })),
       meta: {
         total,

@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true },
   email:    { type: String, required: true, unique: true },
   password: { type: String, required: true, select: false },
+  mobileNumber: { type: String, default: null },
   role: { type: String, enum: ['admin', 'staff', "viewer"], default: 'staff' },
   ownerId: {
     type: mongoose.Schema.Types.ObjectId,

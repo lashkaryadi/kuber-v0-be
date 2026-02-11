@@ -17,6 +17,9 @@ const router = express.Router();
 // ✅ GET - Anyone can view
 router.get("/", protect, getCategories);
 
+// ✅ EXPORT - Must be before /:id to avoid route conflict
+router.get("/export", protect, exportCategoriesToExcel);
+
 // ✅ CREATE - Admin only
 router.post("/", protect, preventStaffCategoryModification, createCategory);
 
@@ -25,8 +28,5 @@ router.put("/:id", protect, preventStaffCategoryModification, updateCategory);
 
 // ✅ DELETE - Admin only
 router.delete("/:id", protect, preventStaffCategoryDeletion, deleteCategory);
-
-// ✅ EXPORT - Anyone can export
-router.get("/export", protect, exportCategoriesToExcel);
 
 export default router;

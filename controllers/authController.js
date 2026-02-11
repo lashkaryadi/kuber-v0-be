@@ -9,7 +9,7 @@ import {
 import { generateOtp, hashOtp } from "../utils/otp.js";
 
 export const register = async (req, res) => {
-  const { username, email, password, role } = req.body;
+  const { username, email, password, role, mobileNumber } = req.body;
 
   const existingUser = await User.findOne({ email });
 
@@ -58,6 +58,7 @@ export const register = async (req, res) => {
     email,
     password,
     role,
+    mobileNumber: mobileNumber || null,
     isEmailVerified: false,
     emailOtp: hashedOtp,
     emailOtpExpiresAt: Date.now() + 10 * 60 * 1000,

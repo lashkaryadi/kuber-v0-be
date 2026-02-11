@@ -4,6 +4,7 @@ import Shape from '../models/Shape.js';
 import RecycleBin from '../models/RecycleBin.js';
 import { generateExcel } from '../utils/excel.js';
 import mongoose from 'mongoose';
+import { parse } from 'csv-parse/sync';
 
 // ==================== GET ALL INVENTORY ====================
 export const getAllInventory = async (req, res) => {
@@ -719,6 +720,131 @@ export const exportInventoryExcel = async (req, res) => {
   }
 };
 
+// ==================== IMPORT INVENTORY FROM CSV ====================
+export const importInventoryCSV = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No CSV file uploaded'
+      });
+    }
 
+    const ownerId = req.user.ownerId;
+    const csvContent = req.file.buffer.toString('utf-8');
 
+    let records;
+    try {
+      records = parse(csvContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        relax_column_count: true,
+      });
+    } catch (parseError) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid CSV format: ' + parseError.message
+      });
+    }
 
+    if (!records || records.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'CSV file is empty or has no data rows'
+      });
+    }
+
+    const results = { created: 0, errors: [] };
+
+    for (let i = 0; i < records.length; i++) {
+      const row = records[i];
+      const rowNum = i + 2; // +2 for 1-indexed + header row
+
+      try {
+        // Map CSV columns to inventory fields (case-insensitive key lookup)
+        const get = (key) => {
+          const keys = Object.keys(row);
+          const match = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === key.toLowerCase().replace(/[\s_-]/g, ''));
+          const val = match ? row[match] : undefined;
+          return val === '' || val === undefined || val === null ? null : val;
+        };
+
+        // Resolve category by name
+        let categoryId = null;
+        const categoryName = get('category');
+        if (categoryName) {
+          const cat = await Category.findOne({
+            name: { $regex: new RegExp(`^${categoryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+            ownerId,
+            isDeleted: false
+          });
+          if (cat) {
+            categoryId = cat._id;
+          }
+        }
+
+        // Determine shape type
+        const shapeType = (get('shapetype') || get('shape_type') || 'single').toLowerCase();
+        const singleShapeName = get('shape') || get('singleshape') || get('single_shape') || null;
+
+        // Parse numeric values - keep null if missing
+        const totalPieces = get('totalpieces') || get('total_pieces') || get('pieces');
+        const totalWeight = get('totalweight') || get('total_weight') || get('weight');
+
+        // Generate serial number
+        const serialNumber = await Inventory.generateSerialNumber(categoryId, ownerId);
+
+        const inventoryData = {
+          serialNumber,
+          category: categoryId,
+          shapeType: shapeType === 'mix' ? 'mix' : 'single',
+          singleShape: shapeType !== 'mix' ? (singleShapeName || null) : null,
+          shapes: [],
+          totalPieces: totalPieces ? parseInt(totalPieces) || 0 : 0,
+          totalWeight: totalWeight ? parseFloat(totalWeight) || 0 : 0,
+          purchaseCode: get('purchasecode') || get('purchase_code') || '',
+          saleCode: get('salecode') || get('sale_code') || '',
+          dimensions: {
+            length: parseFloat(get('length') || get('dimensions_length')) || 0,
+            width: parseFloat(get('width') || get('dimensions_width')) || 0,
+            height: parseFloat(get('height') || get('dimensions_height')) || 0,
+            unit: get('unit') || get('dimensions_unit') || 'mm',
+          },
+          certification: get('certification') || '',
+          location: get('location') || '',
+          status: get('status') || 'in_stock',
+          description: get('description') || '',
+          images: [],
+          ownerId,
+        };
+
+        // Register shape in master list if provided
+        if (singleShapeName && shapeType !== 'mix') {
+          await Shape.getOrCreate(singleShapeName, ownerId);
+        }
+
+        const inventory = new Inventory(inventoryData);
+        await inventory.save();
+        results.created++;
+      } catch (rowError) {
+        results.errors.push({
+          row: rowNum,
+          message: rowError.message
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Imported ${results.created} items. ${results.errors.length} errors.`,
+      data: results
+    });
+  } catch (error) {
+    console.error('CSV import error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to import CSV: ' + error.message
+    });
+  }
+};

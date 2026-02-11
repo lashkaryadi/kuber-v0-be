@@ -40,8 +40,9 @@ export const createShape = async (req, res) => {
     }
 
     // Check if shape already exists
+    const escapedName = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const existing = await Shape.findOne({
-      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+      name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
       ownerId,
       isDeleted: false
     });

@@ -60,9 +60,12 @@ shapeSchema.statics.getOrCreate = async function(name, ownerId) {
     throw new Error('Shape name cannot be empty');
   }
 
+  // Escape regex special characters
+  const escapedName = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   // Try to find existing shape
   let shape = await this.findOne({
-    name: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+    name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
     ownerId,
     isDeleted: false
   });
