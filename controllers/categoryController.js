@@ -68,7 +68,7 @@
 //   res.json({ success: true });
 // };
 import Inventory from "../models/Inventory.js";
-import Category from "../models/category.js";
+import Category from "../models/Category.js";
 import RecycleBin from "../models/RecycleBin.js";
 import { generateExcel } from "../utils/excel.js";
 
