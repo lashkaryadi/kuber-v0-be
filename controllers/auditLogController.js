@@ -1,7 +1,7 @@
 import AuditLog from "../models/AuditLog.js";
 import Inventory from "../models/Inventory.js";
 import Sale from "../models/Sale.js";
-import Category from "../models/Category.js";
+import Category from "../models/category.js";
 import { generateExcel } from "../utils/excel.js";
 
 export const getAuditLogs = async (req, res) => {
