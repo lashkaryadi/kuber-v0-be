@@ -1,6 +1,6 @@
 import RecycleBin from "../models/RecycleBin.js";
 import Inventory from "../models/Inventory.js";
-import Category from "../models/category.js";
+import Category from "../models/Category.js";
 import AuditLog from "../models/AuditLog.js";
 
 /* GET LIST */
