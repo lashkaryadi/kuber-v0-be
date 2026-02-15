@@ -1,5 +1,5 @@
 import Inventory from '../models/Inventory.js';
-import Category from '../models/Category.js';
+import Category from '../models/category.js';
 import Shape from '../models/Shape.js';
 import RecycleBin from '../models/RecycleBin.js';
 import { generateExcel } from '../utils/excel.js';
