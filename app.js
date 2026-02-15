@@ -45,6 +45,10 @@ app.use(express.json());
 app.use(cookieParser()); // ✅ REQUIRED
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "OK" });
+});
+
 /**
  * ✅ Routes
  */
