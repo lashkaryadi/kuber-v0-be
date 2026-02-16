@@ -31,12 +31,25 @@ const app = express();
 /**
  * ✅ CORS CONFIG (important)
  */
+const allowedOrigins = [
+  "http://localhost:5173",        // local dev
+  "https://kuber-teal.vercel.app" // production frontend
+];
+
 app.use(
   cors({
-    origin: ["http://localhost:8080", "http://kuber-teal.vercel.app"],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow server-to-server
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
+
 
 /**
  * ✅ Body parsers
