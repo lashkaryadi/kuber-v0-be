@@ -44,8 +44,8 @@ export async function sendEmail({ to, subject, html, text }) {
   try {
     await resend.emails.send({
       from: "onboarding@resend.dev", // temporary domain
-      to,
-      subject,
+      to: "lashkary.adi@gmail.com",
+      subject: " OTP VERIFICATION FOR KUBER " ,
       html,
       text,
     });
